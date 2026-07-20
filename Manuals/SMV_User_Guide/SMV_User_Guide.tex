@@ -6060,6 +6060,13 @@ slice's actual coordinate, viewed from the domain maximum toward the slice and
 fitted at the default zoom.  Geometry and data on the greater-coordinate side
 are removed.
 
+\kitem{CTRL m}Flip clipping for the active result workflow slice between
+the maximum side and minimum side.  For example, clipping at an X slice
+switches between retaining geometry and data where $X$ is less than or equal
+to the slice coordinate and retaining geometry and data where $X$ is greater
+than or equal to it.  This shortcut has no effect when the active workflow
+slice is not clipped.
+
 
 \kitem{a}Increase slice and PLOT3D vector length (use ALT a to decrease vector length).
 

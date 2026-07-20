@@ -66,8 +66,8 @@ static void RestoreWorkflowCameraClip(void);
 
 int GetResultWorkflowStatus(char *label, int label_size){
   result_workflow *workflow;
-  float clip_value = 0.0f;
-  int clip_enabled = 0;
+  float clip_min = 0.0f, clip_max = 0.0f;
+  int clip_min_enabled = 0, clip_max_enabled = 0;
   char axis;
 
   if(label == NULL || label_size <= 0)return 0;
@@ -78,25 +78,41 @@ int GetResultWorkflowStatus(char *label, int label_size){
   axis = (char)('X' + active_plane.idir - 1);
   switch(active_plane.idir){
     case 1:
-      clip_enabled = clipinfo.clip_xmax;
-      clip_value = clipinfo.xmax;
+      clip_min_enabled = clipinfo.clip_xmin;
+      clip_max_enabled = clipinfo.clip_xmax;
+      clip_min = clipinfo.xmin;
+      clip_max = clipinfo.xmax;
       break;
     case 2:
-      clip_enabled = clipinfo.clip_ymax;
-      clip_value = clipinfo.ymax;
+      clip_min_enabled = clipinfo.clip_ymin;
+      clip_max_enabled = clipinfo.clip_ymax;
+      clip_min = clipinfo.ymin;
+      clip_max = clipinfo.ymax;
       break;
     case 3:
-      clip_enabled = clipinfo.clip_zmax;
-      clip_value = clipinfo.zmax;
+      clip_min_enabled = clipinfo.clip_zmin;
+      clip_max_enabled = clipinfo.clip_zmax;
+      clip_min = clipinfo.zmin;
+      clip_max = clipinfo.zmax;
       break;
     default:
       return 0;
   }
 
-  if(clip_mode != CLIP_OFF && clip_enabled == 1){
+  if(workflow_camera_clip_saved == 1 && clip_mode != CLIP_OFF && clip_min_enabled == 1 && clip_max_enabled == 1){
+    snprintf(label, (size_t)label_size, "%s (%s) | %c slice: %.3f m | clip: %.3f <= %c <= %.3f m",
+             workflow->colorbar_label, workflow->slice_label, axis, active_plane.position,
+             clip_min, axis, clip_max);
+  }
+  else if(workflow_camera_clip_saved == 1 && clip_mode != CLIP_OFF && clip_min_enabled == 1){
+    snprintf(label, (size_t)label_size, "%s (%s) | %c slice: %.3f m | clip: %c >= %.3f m",
+             workflow->colorbar_label, workflow->slice_label, axis, active_plane.position,
+             axis, clip_min);
+  }
+  else if(workflow_camera_clip_saved == 1 && clip_mode != CLIP_OFF && clip_max_enabled == 1){
     snprintf(label, (size_t)label_size, "%s (%s) | %c slice: %.3f m | clip: %c <= %.3f m",
              workflow->colorbar_label, workflow->slice_label, axis, active_plane.position,
-             axis, clip_value);
+             axis, clip_max);
   }
   else{
     snprintf(label, (size_t)label_size, "%s (%s) | %c slice: %.3f m | clip: off",
@@ -479,6 +495,65 @@ static void ApplyWorkflowClipView(const workflow_plane *plane){
   GLUTPOSTREDISPLAY;
 }
 
+/* ------------------ FlipWorkflowClipSide ------------------------ */
+
+static int FlipWorkflowClipSide(void){
+  float *clip_min, *clip_max, clip_value;
+  int *clip_min_enabled, *clip_max_enabled;
+  char axis;
+
+  if(active_workflow < 0 || active_plane.group_index < 0)return 0;
+  axis = (char)('X' + active_plane.idir - 1);
+  switch(active_plane.idir){
+    case 1:
+      clip_min_enabled = &clipinfo.clip_xmin;
+      clip_max_enabled = &clipinfo.clip_xmax;
+      clip_min = &clipinfo.xmin;
+      clip_max = &clipinfo.xmax;
+      break;
+    case 2:
+      clip_min_enabled = &clipinfo.clip_ymin;
+      clip_max_enabled = &clipinfo.clip_ymax;
+      clip_min = &clipinfo.ymin;
+      clip_max = &clipinfo.ymax;
+      break;
+    case 3:
+      clip_min_enabled = &clipinfo.clip_zmin;
+      clip_max_enabled = &clipinfo.clip_zmax;
+      clip_min = &clipinfo.zmin;
+      clip_max = &clipinfo.zmax;
+      break;
+    default:
+      return 1;
+  }
+
+  if(workflow_camera_clip_saved == 0 || clip_mode == CLIP_OFF)return 1;
+  if(*clip_max_enabled == 1){
+    clip_value = *clip_max;
+    *clip_max_enabled = 0;
+    *clip_min_enabled = 1;
+    *clip_min = clip_value;
+    PRINTF("Review clipping: %c >= %.3f\n", axis, clip_value);
+  }
+  else if(*clip_min_enabled == 1){
+    clip_value = *clip_min;
+    *clip_min_enabled = 0;
+    *clip_max_enabled = 1;
+    *clip_max = clip_value;
+    PRINTF("Review clipping: %c <= %.3f\n", axis, clip_value);
+  }
+  else{
+    return 1;
+  }
+
+  Clip2Cam(camera_current);
+  GLUIUpdateClip();
+  updatefacelists = 1;
+  global_scase.updatefaces = 1;
+  GLUTPOSTREDISPLAY;
+  return 1;
+}
+
 /* ------------------ SelectWorkflowPlane ------------------------ */
 
 static void SelectWorkflowPlane(int workflow_index, int apply_clip_view){
@@ -594,6 +669,8 @@ int HandleResultWorkflowShortcut(unsigned char key, int modifiers){
     case 'p':
       SelectWorkflowPlane(WORKFLOW_PRESSURE, apply_clip_view);
       return 1;
+    case 'm':
+      return FlipWorkflowClipSide();
     default:
       return 0;
   }
