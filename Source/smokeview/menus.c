@@ -11603,6 +11603,10 @@ if(opengl_finalized == 0)return;
     glutAddMenuEntry("  x,y,z: toggle contour plot visibility along x, y and z axis", MENU_DUMMY);
     glutAddMenuEntry("  {,}: load previous/next time Plot3D files", MENU_DUMMY);
   }
+  glutAddMenuEntry("Review workflows", MENU_DUMMY);
+  glutAddMenuEntry("  CTRL x/y/z: cycle axis minimum, maximum and exterior views", MENU_DUMMY);
+  glutAddMenuEntry("  CTRL i/t/v/p: cycle result slices in X, Y, Z order", MENU_DUMMY);
+  glutAddMenuEntry("    clip at, orient to and fit each selected slice", MENU_DUMMY);
   glutAddMenuEntry("Misc", MENU_DUMMY);
   glutAddMenuEntry("  A: toggle between plot types (device and HRRPUV)", MENU_DUMMY);
   glutAddMenuEntry("  B: when the mouse is down, hide OBSTS and geometry - draw an outline instead", MENU_DUMMY);

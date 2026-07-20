@@ -1659,7 +1659,7 @@ void Keyboard(unsigned char key, int flag){
 #ifdef pp_OSX
     keystate = GLUTGETMODIFIERS();
 #else
-    keystate = (GLUT_ACTIVE_ALT|GLUT_ACTIVE_CTRL)&GLUTGETMODIFIERS();
+    keystate = (GLUT_ACTIVE_ALT|GLUT_ACTIVE_CTRL|GLUT_ACTIVE_SHIFT)&GLUTGETMODIFIERS();
 #endif
     if(scriptoutstream!=NULL&&key!='t'&&key!='r'&&key!='R'&&key!=' '&&key!='-'){
       fprintf(scriptoutstream,"KEYBOARD\n");
@@ -1684,6 +1684,8 @@ void Keyboard(unsigned char key, int flag){
   }
   GLUTPOSTREDISPLAY;
   key2 = (char)key;
+
+  if(HandleResultWorkflowShortcut(key, keystate) == 1)return;
 
   switch(key2){
 #define DEVNO_HRRNO   0
