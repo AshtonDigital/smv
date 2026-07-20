@@ -4,13 +4,60 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
+
+
+QUANTITIES = ("visibility", "temperature", "velocity", "pressure")
+QUANTITY_PATTERN = "|".join(QUANTITIES)
+COMPONENT_PATTERN = re.compile(
+    r"^\s*\d+:\s+(\d+)x(\d+)([+-]\d+)([+-]\d+)\s+"
+    r"[^ ]+\s+([0-9.eE+-]+)\s+(.+)$"
+)
+
+
+@dataclass
+class Capture:
+    path: Path
+    quantity: str
+    axis: str
+    sequence: str
+    position: float
+    width: int
+    height: int
+    model_bounds: tuple[int, int, int, int] | None = None
+
+
+def legacy_capture_pattern(prefix: str) -> re.Pattern[str]:
+    return re.compile(
+        rf"{re.escape(prefix)}_({QUANTITY_PATTERN})_([xyz])_(\d{{3}})_"
+        r"(m?\d+p\d{3})\.png"
+    )
+
+
+def human_capture_pattern(prefix: str) -> re.Pattern[str]:
+    quantities = "|".join(quantity.title() for quantity in QUANTITIES)
+    return re.compile(
+        rf"{re.escape(prefix)} ({quantities}) [XYZ] Slice \d{{3}} at "
+        r"-?\d+\.\d{3}m Clip (Min|Max)\.png"
+    )
+
+
+def nonnegative_int(value: str) -> int:
+    try:
+        number = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("value must be a non-negative integer") from error
+    if number < 0:
+        raise argparse.ArgumentTypeError("value must be a non-negative integer")
+    return number
 
 
 def smokeview_file(value: str) -> Path:
@@ -53,6 +100,242 @@ def display_size() -> tuple[int, int] | None:
         if match is not None:
             return int(match.group(1)), int(match.group(2))
     return None
+
+
+def png_size(path: Path) -> tuple[int, int]:
+    with path.open("rb") as stream:
+        header = stream.read(24)
+    if len(header) < 24 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+        raise RuntimeError(f"capture is not a valid PNG: {path}")
+    return struct.unpack(">II", header[16:24])
+
+
+def image_magick_command() -> list[str] | None:
+    magick = shutil.which("magick")
+    if magick is not None:
+        return [magick]
+    convert = shutil.which("convert")
+    if convert is not None:
+        return [convert]
+    return None
+
+
+def file_signature(path: Path) -> tuple[int, int]:
+    stat = path.stat()
+    return stat.st_mtime_ns, stat.st_size
+
+
+def discover_captures(
+    output: Path, prefix: str, previous: dict[Path, tuple[int, int]]
+) -> list[Capture]:
+    pattern = legacy_capture_pattern(prefix)
+    captures: list[Capture] = []
+
+    for path in sorted(output.iterdir()):
+        match = pattern.fullmatch(path.name)
+        if match is None or not path.is_file():
+            continue
+        if previous.get(path) == file_signature(path):
+            continue
+        quantity, axis, sequence, encoded_position = match.groups()
+        position_text = encoded_position.replace("p", ".")
+        if position_text.startswith("m"):
+            position_text = "-" + position_text[1:]
+        width, height = png_size(path)
+        captures.append(
+            Capture(path, quantity, axis, sequence, float(position_text), width, height)
+        )
+    return captures
+
+
+def human_capture_name(prefix: str, capture: Capture) -> str:
+    return (
+        f"{prefix} {capture.quantity.title()} {capture.axis.upper()} "
+        f"Slice {capture.sequence} at {capture.position:.3f}m Clip Max.png"
+    )
+
+
+def is_white_component(color: str) -> bool:
+    compact = color.replace(" ", "").lower()
+    return (
+        "255,255,255" in compact
+        or "gray(255)" in compact
+        or "grey(255)" in compact
+        or "#ffffff" in compact
+    )
+
+
+def detect_model_bounds(
+    capture: Capture, convert_command: list[str]
+) -> tuple[int, int, int, int] | None:
+    command = convert_command + [
+        str(capture.path),
+        "-fuzz", "2%",
+        "-fill", "black", "-opaque", "white",
+        "-fill", "white", "+opaque", "black",
+        "-define", "connected-components:verbose=true",
+        "-connected-components", "8",
+        "null:",
+    ]
+    result = subprocess.run(command, check=False, capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+
+    image_area = capture.width * capture.height
+    minimum_area = max(100.0, image_area * 0.00005)
+    confidence_area = max(1000.0, image_area * 0.001)
+    components: list[tuple[int, int, int, int, float]] = []
+    for line in (result.stdout + "\n" + result.stderr).splitlines():
+        match = COMPONENT_PATTERN.match(line)
+        if match is None:
+            continue
+        component_width = int(match.group(1))
+        component_height = int(match.group(2))
+        x = int(match.group(3))
+        y = int(match.group(4))
+        area = float(match.group(5))
+        if not is_white_component(match.group(6)) or area < minimum_area:
+            continue
+        if x >= 0.94 * capture.width or y >= 0.95 * capture.height:
+            continue
+        components.append(
+            (x, y, x + component_width, y + component_height, area)
+        )
+
+    if not components or max(component[4] for component in components) < confidence_area:
+        return None
+    xmin = min(component[0] for component in components)
+    ymin = min(component[1] for component in components)
+    xmax = max(component[2] for component in components)
+    ymax = max(component[3] for component in components)
+    box_width = xmax - xmin
+    box_height = ymax - ymin
+    center_x = (xmin + xmax) / 2.0
+    center_y = (ymin + ymax) / 2.0
+    if box_width < 0.02 * capture.width or box_height < 0.02 * capture.height:
+        return None
+    if box_width > 0.90 * capture.width or box_height > 0.96 * capture.height:
+        return None
+    if not (0.15 * capture.width <= center_x <= 0.85 * capture.width):
+        return None
+    if not (0.05 * capture.height <= center_y <= 0.95 * capture.height):
+        return None
+    return xmin, ymin, xmax, ymax
+
+
+def crop_capture(
+    capture: Capture,
+    crop_box: tuple[int, int, int, int],
+    padding: int,
+    convert_command: list[str],
+) -> bool:
+    xmin, ymin, xmax, ymax = crop_box
+    safety = 4
+    xmin = max(0, xmin - safety)
+    ymin = max(0, ymin - safety)
+    xmax = min(capture.width, xmax + safety)
+    ymax = min(capture.height, ymax + safety)
+    crop_width = xmax - xmin
+    crop_height = ymax - ymin
+    if crop_width <= 0 or crop_height <= 0:
+        return False
+
+    with tempfile.NamedTemporaryFile(
+        dir=capture.path.parent,
+        prefix=".smv_crop_",
+        suffix=".png",
+        delete=False,
+    ) as stream:
+        cropped_path = Path(stream.name)
+    command = convert_command + [
+        str(capture.path),
+        "-crop", f"{crop_width}x{crop_height}+{xmin}+{ymin}",
+        "+repage",
+    ]
+    if padding > 0:
+        command.extend(["-bordercolor", "white", "-border", f"{padding}x{padding}"])
+    command.append(str(cropped_path))
+    try:
+        result = subprocess.run(command, check=False, capture_output=True, text=True)
+        if result.returncode != 0:
+            return False
+        os.replace(cropped_path, capture.path)
+        return True
+    finally:
+        cropped_path.unlink(missing_ok=True)
+
+
+def crop_captures(captures: list[Capture], padding: int) -> None:
+    convert_command = image_magick_command()
+    if convert_command is None:
+        print(
+            "capture_result_slices: warning: ImageMagick was not found; "
+            "leaving captures uncropped",
+            file=sys.stderr,
+        )
+        return
+
+    for capture in captures:
+        capture.model_bounds = detect_model_bounds(capture, convert_command)
+        if capture.model_bounds is None:
+            print(
+                f"capture_result_slices: warning: model bounds were not detected in "
+                f"{capture.path.name}; leaving it uncropped",
+                file=sys.stderr,
+            )
+
+    for axis in "xyz":
+        detected = [
+            capture
+            for capture in captures
+            if capture.axis == axis and capture.model_bounds is not None
+        ]
+        if not detected:
+            continue
+        dimensions = {(capture.width, capture.height) for capture in detected}
+        if len(dimensions) != 1:
+            print(
+                f"capture_result_slices: warning: {axis.upper()} captures have different "
+                "source dimensions; leaving that axis uncropped",
+                file=sys.stderr,
+            )
+            continue
+        bounds = [capture.model_bounds for capture in detected]
+        axis_box = (
+            min(bound[0] for bound in bounds),
+            min(bound[1] for bound in bounds),
+            max(bound[2] for bound in bounds),
+            max(bound[3] for bound in bounds),
+        )
+        cropped = 0
+        final_size: tuple[int, int] | None = None
+        for capture in detected:
+            if crop_capture(capture, axis_box, padding, convert_command):
+                cropped += 1
+                final_size = png_size(capture.path)
+            else:
+                print(
+                    f"capture_result_slices: warning: unable to crop {capture.path.name}; "
+                    "leaving it unchanged",
+                    file=sys.stderr,
+                )
+        if cropped > 0 and final_size is not None:
+            print(
+                f"Cropped {cropped} {axis.upper()} capture"
+                f"{'s' if cropped != 1 else ''} to {final_size[0]}x{final_size[1]}"
+            )
+
+
+def rename_captures(captures: list[Capture], prefix: str) -> None:
+    destinations = [capture.path.with_name(human_capture_name(prefix, capture)) for capture in captures]
+    if len(set(destinations)) != len(destinations):
+        raise RuntimeError("two result captures resolve to the same output filename")
+    for capture, destination in zip(captures, destinations):
+        if destination.exists() and destination != capture.path:
+            raise RuntimeError(f"capture already exists: {destination}; use --overwrite")
+    for capture, destination in zip(captures, destinations):
+        capture.path.rename(destination)
+        capture.path = destination
 
 
 def supports_result_capture(executable: Path) -> bool:
@@ -123,6 +406,14 @@ def parse_args() -> argparse.Namespace:
         "--overwrite", action="store_true", help="replace captures that already exist"
     )
     parser.add_argument(
+        "--crop-padding", type=nonnegative_int, default=20, metavar="PIXELS",
+        help="white border around cropped models (default: 20 pixels)",
+    )
+    parser.add_argument(
+        "--no-crop", action="store_true",
+        help="keep full-size captures while still applying human-readable filenames",
+    )
+    parser.add_argument(
         "--keep-script", action="store_true", help="retain the generated .ssf file in the output directory"
     )
     return parser.parse_args()
@@ -147,13 +438,29 @@ def main() -> int:
             "Build Smokeview from this checkout or pass that executable with --smokeview."
         )
     output.mkdir(parents=True, exist_ok=True)
+    legacy_pattern = legacy_capture_pattern(prefix)
+    human_pattern = human_capture_pattern(prefix)
     if args.overwrite:
-        capture_name = re.compile(
-            rf"{re.escape(prefix)}_(visibility|temperature|velocity|pressure)_[xyz]_\d{{3}}_.+\.png"
-        )
         for path in output.iterdir():
-            if path.is_file() and capture_name.fullmatch(path.name) is not None:
+            if path.is_file() and (
+                legacy_pattern.fullmatch(path.name) is not None
+                or human_pattern.fullmatch(path.name) is not None
+            ):
                 path.unlink()
+    else:
+        existing_human = [
+            path for path in output.iterdir()
+            if path.is_file() and human_pattern.fullmatch(path.name) is not None
+        ]
+        if existing_human:
+            raise RuntimeError(
+                f"capture already exists: {existing_human[0]}; use --overwrite"
+            )
+    previous_captures = {
+        path: file_signature(path)
+        for path in output.iterdir()
+        if path.is_file() and legacy_pattern.fullmatch(path.name) is not None
+    }
     script_text = (
         ("RENDERFULLSCREEN\n" if fullscreen else "")
         + "RENDERSIZE\n"
@@ -188,7 +495,21 @@ def main() -> int:
     print(f"Capture size: {width}x{height}")
     print(f"Using Smokeview: {smokeview}")
     try:
-        return subprocess.run(command, cwd=case.parent, check=False).returncode
+        returncode = subprocess.run(command, cwd=case.parent, check=False).returncode
+        if returncode != 0:
+            return returncode
+        captures = discover_captures(output, prefix, previous_captures)
+        if not captures:
+            print(
+                "capture_result_slices: warning: no new result PNG files were found",
+                file=sys.stderr,
+            )
+            return 0
+        if not args.no_crop:
+            crop_captures(captures, args.crop_padding)
+        rename_captures(captures, prefix)
+        print(f"Finalized {len(captures)} result capture{'s' if len(captures) != 1 else ''}")
+        return 0
     finally:
         if remove_script:
             script_path.unlink(missing_ok=True)

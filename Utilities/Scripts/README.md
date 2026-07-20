@@ -8,9 +8,13 @@ This script opens a Smokeview case and captures every slice configured for the
 result-review shortcuts at 150 s (or the nearest available frame).  Each PNG
 uses the fitted axis view at the default zoom and clips blockages at the slice
 coordinate from the domain-maximum side.  Outline viewing is disabled.  The
-on-screen result label and clipping position are included in each image.  By
-default Smokeview uses a borderless fullscreen window and renders at the
-dimensions of the user's current display.
+full render includes the on-screen result label and clipping position.  By
+default Smokeview uses a borderless fullscreen window, renders at the
+dimensions of the user's current display, then crops each PNG to the model
+with a 20-pixel white border.  All captures for the same X, Y or Z axis use a
+common crop size; the colourbar, labels and time bar are removed.  Final names
+are human readable, for example
+`case Temperature X Slice 001 at 27.700m Clip Max.png`.
 
 ```shell
 capture_result_slices.py path/to/case.smv
@@ -20,11 +24,14 @@ Images are written to `path/to/case_slice_captures`.  Use `-o DIR` to choose a
 different directory, `--overwrite` to replace existing images,
 `--size WIDTHxHEIGHT` to use a windowed capture at an explicit resolution, or
 `--smokeview EXE` to select a Smokeview executable.  Use `--time SECONDS` to
-override the default capture time.  When no executable is specified, the
-script prefers a Smokeview built in this repository before checking the `SMV`
-environment variable and `PATH`; older Smokeview releases do not contain the
-required `RENDERRESULTS` command.  Run `capture_result_slices.py --help` for
-all options.
+override the default capture time, `--crop-padding PIXELS` to change the white
+border, or `--no-crop` to retain the full render.  Cropping uses ImageMagick;
+if it is unavailable or the model cannot be identified confidently, the
+affected PNG is retained uncropped with a warning.  When no executable is
+specified, the script prefers a Smokeview built in this repository before
+checking the `SMV` environment variable and `PATH`; older Smokeview releases
+do not contain the required `RENDERRESULTS` command.  Run
+`capture_result_slices.py --help` for all options.
 
 ## slice2html.sh
 
