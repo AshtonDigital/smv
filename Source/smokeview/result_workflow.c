@@ -62,6 +62,25 @@ static int next_view_stage = 0;
 static void HideWorkflowPlane(const workflow_plane *plane);
 static void RestoreWorkflowCameraClip(void);
 
+/* ------------------ RestoreWorkflowTime ------------------------ */
+
+static void RestoreWorkflowTime(float selected_time, int selected_time_valid, int selected_stept){
+  float min_time_diff;
+  int i, selected_frame = 0;
+
+  if(selected_time_valid == 0 || global_times == NULL || nglobal_times <= 0)return;
+  min_time_diff = ABS(global_times[0] - selected_time);
+  for(i = 1; i < nglobal_times; i++){
+    float time_diff = ABS(global_times[i] - selected_time);
+
+    if(time_diff < min_time_diff){
+      min_time_diff = time_diff;
+      selected_frame = i;
+    }
+  }
+  SetTimeFrameIndex(selected_frame, selected_stept);
+}
+
 /* ------------------ ResetResultWorkflows ------------------------ */
 
 void ResetResultWorkflows(void){
@@ -422,8 +441,16 @@ static void ApplyWorkflowClipView(const workflow_plane *plane){
 static void SelectWorkflowPlane(int workflow_index, int apply_clip_view){
   result_workflow *workflow = workflows + workflow_index;
   workflow_plane *planes = NULL;
+  float selected_time = 0.0f;
+  int selected_time_valid = 0;
+  int selected_stept = stept;
   int is_vector = 0;
   int nplanes;
+
+  if(global_times != NULL && nglobal_times > 0){
+    selected_time = GetTime();
+    selected_time_valid = 1;
+  }
 
   if(workflow->configured == 0){
     fprintf(stderr, "*** Warning: RESULTWORKFLOW %s is not configured\n", workflow->name);
@@ -461,6 +488,7 @@ static void SelectWorkflowPlane(int workflow_index, int apply_clip_view){
   ApplyWorkflowBounds(workflow, &active_plane);
   UpdateSliceBounds2();
   UpdateRGBColors(colorbar_select_index);
+  RestoreWorkflowTime(selected_time, selected_time_valid, selected_stept);
   if(apply_clip_view == 1)ApplyWorkflowClipView(&active_plane);
   GLUTPOSTREDISPLAY;
   FREEMEMORY(planes);
