@@ -182,8 +182,14 @@ EXTERNCPP void NextZIndex(int inc,int flag);
 //*** result_workflow.c headers
 
 EXTERNCPP void ConfigureResultWorkflow(const char *name, const char *slice_label, const char *workflow_colorbar_label);
+EXTERNCPP void BeginResultWorkflowCapture(void);
+EXTERNCPP int  CaptureNextResultWorkflowPlane(int *workflow_index, int *plane_index,
+                                              const char *prefix, char *render_base, int render_base_size);
 EXTERNCPP int  GetResultWorkflowStatus(char *label, int label_size);
+EXTERNCPP const char *GetResultWorkflowCaptureFeature(void);
+EXTERNCPP void ReapplyResultWorkflowCaptureClip(void);
 EXTERNCPP void ResetResultWorkflows(void);
+EXTERNCPP int  SetResultWorkflowCaptureTime(float requested_time, float *capture_time);
 EXTERNCPP void ResetGLTime(void);
 EXTERNCPP void ReshapeCB(int width, int height);
 EXTERNCPP void ResizeWindow(int width, int height);
@@ -767,6 +773,7 @@ EXTERNCPP void WriteIni(int flag,char *file);
 
 EXTERNCPP void DrawScreenInfo(void);
 EXTERNCPP char *GetMovieFilePath(char *moviefile_path);
+EXTERNCPP int  GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full);
 EXTERNCPP void GetRenderResolution(int *width_low, int *height_low, int *width_high, int *height_high);
 EXTERNCPP GLubyte *GetScreenBuffer(void);
 EXTERNCPP void MakeMovie(void);

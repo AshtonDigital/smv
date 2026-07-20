@@ -4051,6 +4051,11 @@ void DoScript(void){
           current_script_command->exit = 0;
         }
       }
+      else if(current_script_command->command == SCRIPT_RENDERRESULTS &&
+              current_script_command->exit == 0 && current_script_command->first == 0 &&
+              render_status == RENDER_OFF){
+        script_render_flag = RunScriptCommand(current_script_command);
+      }
     }
     int advance_script = 0;
     if(current_script_command>=scriptinfo&&current_script_command->command==SCRIPT_SETVIEWPOINT&&update_viewpoint_script>0){
@@ -4059,6 +4064,9 @@ void DoScript(void){
     else{
       advance_script = 1;
       if(render_status!=RENDER_OFF)advance_script = 0;
+      if(current_script_command != NULL &&
+         current_script_command->command == SCRIPT_RENDERRESULTS &&
+         current_script_command->exit == 0)advance_script = 0;
     }
 #define NREPEATS 1
     if(nrenderonce>=NREPEATS){
@@ -4163,6 +4171,9 @@ void DoNonStereo(void){
     int stop_rendering;
 
     IdleDisplay();
+    if(current_script_command != NULL && current_script_command->command == SCRIPT_RENDERRESULTS){
+      ReapplyResultWorkflowCaptureClip();
+    }
 
     stop_rendering = 0;
     if(plotstate==DYNAMIC_PLOTS && nglobal_times>0&&iglobal_times==nglobal_times-1)stop_rendering = 1;
@@ -4301,6 +4312,8 @@ void SetMainWindow(void){
 
 void ResizeWindow(int width, int height){
   float wscaled, hscaled;
+  int result_capture = current_script_command != NULL &&
+                       current_script_command->command == SCRIPT_RENDERRESULTS;
 
   assert(opengl_finalized == 1);
   if(opengl_finalized == 0)return;
@@ -4308,7 +4321,7 @@ void ResizeWindow(int width, int height){
   SetMainWindow();
   wscaled = (float)width/(float)max_screenWidth;
   hscaled = (float)height/(float)max_screenHeight;
-  if(wscaled>1.0||hscaled>1.0){
+  if((wscaled>1.0||hscaled>1.0) && result_capture == 0){
     if(wscaled>hscaled){
       width/=wscaled;
       height/=wscaled;

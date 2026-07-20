@@ -21,6 +21,8 @@
 #define SCRIPT_RENDERSIZE        120
 #define SCRIPT_MOVIETYPE         121
 #define SCRIPT_ISORENDERALL      122
+#define SCRIPT_RENDERRESULTS     123
+#define SCRIPT_RENDERFULLSCREEN  124
 #define SCRIPT_GPUOFF            127
 
 #define SCRIPT_LOADFILE          201
@@ -130,4 +132,3 @@ EXTERNCPP void SetRunScriptVal(int val);
 EXTERNCPP void SetViewZMAXPersp(void);
 EXTERNCPP void StartScript(void);
 #endif
-

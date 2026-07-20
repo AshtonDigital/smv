@@ -1901,7 +1901,13 @@ void RenderState(int onoff){
       ResizeWindow(screenWidth/scale, screenHeight/scale);
     }
     else{
-      if(renderW>max_screenWidth){
+      int result_capture = current_script_command != NULL &&
+                           current_script_command->command == SCRIPT_RENDERRESULTS;
+
+      if(result_capture == 1 && renderW == screenWidth && renderH == screenHeight){
+        // The automated capture may already be using a borderless fullscreen drawable.
+      }
+      else if(renderW>max_screenWidth && result_capture == 0){
         ResizeWindow(max_screenWidth/scale, max_screenHeight/scale);
       }
       else{

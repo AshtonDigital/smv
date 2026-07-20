@@ -26,6 +26,9 @@ typedef struct {
   char colorbar_label[WORKFLOW_LABEL_LEN];
   int configured;
   int current_plane;
+  int fixed_bounds_valid;
+  float fixed_min;
+  float fixed_max;
 } result_workflow;
 
 typedef struct {
@@ -36,10 +39,10 @@ typedef struct {
 } workflow_plane;
 
 static result_workflow workflows[NRESULT_WORKFLOWS] = {
-  {"visibility",  "VIS_C0.9H0.1", "Visibility",  1, -1},
-  {"temperature", "temp",          "Temperature", 1, -1},
-  {"velocity",    "vel",           "Velocity",    1, -1},
-  {"pressure",    "pres",          "Pressure",    1, -1}
+  {"visibility",  "VIS_C0.9H0.1", "Visibility",  1, -1, 1,   0.0f,  30.0f},
+  {"temperature", "temp",          "Temperature", 1, -1, 1,  20.0f, 300.0f},
+  {"velocity",    "vel",           "Velocity",    1, -1, 1,   0.0f,  10.0f},
+  {"pressure",    "pres",          "Pressure",    1, -1, 1, -70.0f,  70.0f}
 };
 
 static const char *default_slice_labels[NRESULT_WORKFLOWS] = {
@@ -49,6 +52,9 @@ static const char *default_slice_labels[NRESULT_WORKFLOWS] = {
 static const char *default_colorbar_labels[NRESULT_WORKFLOWS] = {
   "Visibility", "Temperature", "Velocity", "Pressure"
 };
+
+static const float default_fixed_mins[NRESULT_WORKFLOWS] = {0.0f, 20.0f, 0.0f, -70.0f};
+static const float default_fixed_maxs[NRESULT_WORKFLOWS] = {30.0f, 300.0f, 10.0f, 70.0f};
 
 static int active_workflow = -1;
 static workflow_plane active_plane = {-1, 0, 0, 0.0f};
@@ -61,8 +67,88 @@ static int workflow_zoomindex_saved = ZOOMINDEX_ONE;
 static int last_view_axis = -1;
 static int next_view_stage = 0;
 
+const char *GetResultWorkflowCaptureFeature(void){
+  return "SMV_FEATURE_RENDERRESULTS_1";
+}
+
 static void HideWorkflowPlane(const workflow_plane *plane);
 static void RestoreWorkflowCameraClip(void);
+static void SelectWorkflowPlane(int workflow_index, int apply_clip_view, int direction);
+static void ApplyWorkflowClipView(const workflow_plane *plane);
+
+/* ------------------ SetResultWorkflowCaptureTime ------------------------ */
+
+int SetResultWorkflowCaptureTime(float requested_time, float *capture_time){
+  float min_time_diff;
+  int i, selected_frame = 0;
+
+  UpdateTimes();
+  if(global_times == NULL || nglobal_times <= 0)return 0;
+  min_time_diff = ABS(global_times[0] - requested_time);
+  for(i = 1; i < nglobal_times; i++){
+    float time_diff = ABS(global_times[i] - requested_time);
+
+    if(time_diff < min_time_diff){
+      min_time_diff = time_diff;
+      selected_frame = i;
+    }
+  }
+  SetTimeFrameIndex(selected_frame, PAUSE_TIME);
+  script_itime = selected_frame;
+  last_time_paused = 1;
+  if(capture_time != NULL)*capture_time = global_times[selected_frame];
+  return 1;
+}
+
+/* ------------------ ReapplyResultWorkflowCaptureClip ------------------------ */
+
+void ReapplyResultWorkflowCaptureClip(void){
+  int *clip_enabled;
+  float *clip_value;
+
+  if(active_plane.group_index < 0)return;
+  switch(active_plane.idir){
+    case 1:
+      clip_enabled = &clipinfo.clip_xmax;
+      clip_value = &clipinfo.xmax;
+      break;
+    case 2:
+      clip_enabled = &clipinfo.clip_ymax;
+      clip_value = &clipinfo.ymax;
+      break;
+    case 3:
+      clip_enabled = &clipinfo.clip_zmax;
+      clip_value = &clipinfo.zmax;
+      break;
+    default:
+      return;
+  }
+  clipinfo.clip_xmin = 0;
+  clipinfo.clip_xmax = 0;
+  clipinfo.clip_ymin = 0;
+  clipinfo.clip_ymax = 0;
+  clipinfo.clip_zmin = 0;
+  clipinfo.clip_zmax = 0;
+  clip_mode = CLIP_BLOCKAGES;
+  *clip_enabled = 1;
+  *clip_value = active_plane.position;
+  Clip2Cam(camera_current);
+}
+
+/* ------------------ BeginResultWorkflowCapture ------------------------ */
+
+void BeginResultWorkflowCapture(void){
+  int i;
+
+  HideWorkflowPlane(&active_plane);
+  RestoreWorkflowCameraClip();
+  outline_mode = SCENE_OUTLINE_HIDDEN;
+  updatefacelists = 1;
+  updatemenu = 1;
+  for(i = 0; i < NRESULT_WORKFLOWS; i++)workflows[i].current_plane = -1;
+  active_workflow = -1;
+  active_plane.group_index = -1;
+}
 
 /* ------------------ GetResultWorkflowStatus ------------------------ */
 
@@ -161,6 +247,9 @@ void ResetResultWorkflows(void){
     strcpy(workflows[i].colorbar_label, default_colorbar_labels[i]);
     workflows[i].configured = 1;
     workflows[i].current_plane = -1;
+    workflows[i].fixed_bounds_valid = 1;
+    workflows[i].fixed_min = default_fixed_mins[i];
+    workflows[i].fixed_max = default_fixed_maxs[i];
   }
   active_workflow = -1;
   active_plane.group_index = -1;
@@ -201,6 +290,7 @@ void ConfigureResultWorkflow(const char *name, const char *slice_label, const ch
   workflows[index].colorbar_label[WORKFLOW_LABEL_LEN - 1] = 0;
   workflows[index].configured = 1;
   workflows[index].current_plane = -1;
+  workflows[index].fixed_bounds_valid = 0;
 }
 
 /* ------------------ SliceLabelMatches ------------------------ */
@@ -271,6 +361,45 @@ static int BuildWorkflowPlanes(const result_workflow *workflow, int is_vector, w
   return count;
 }
 
+/* ------------------ CaptureNextResultWorkflowPlane ------------------------ */
+
+int CaptureNextResultWorkflowPlane(int *workflow_index, int *plane_index,
+                                   const char *prefix, char *render_base, int render_base_size){
+  int i;
+
+  if(workflow_index == NULL || plane_index == NULL || render_base == NULL || render_base_size <= 0)return 0;
+  render_base[0] = 0;
+  for(i = MAX(*workflow_index, 0); i < NRESULT_WORKFLOWS; i++){
+    workflow_plane *planes = NULL;
+    int next_plane = i == *workflow_index ? *plane_index + 1 : 0;
+    int nplanes = BuildWorkflowPlanes(workflows + i, 0, &planes);
+
+    if(next_plane >= 0 && next_plane < nplanes){
+      char position[64];
+      int j;
+
+      snprintf(position, sizeof(position), "%.3f", planes[next_plane].position);
+      for(j = 0; position[j] != 0; j++){
+        if(position[j] == '-')position[j] = 'm';
+        if(position[j] == '.')position[j] = 'p';
+      }
+      snprintf(render_base, (size_t)render_base_size, "%s%s%s_%c_%03i_%s",
+               prefix == NULL ? "" : prefix,
+               prefix == NULL || prefix[0] == 0 ? "" : "_",
+               workflows[i].name, (char)('x' + planes[next_plane].idir - 1),
+               next_plane + 1, position);
+      FREEMEMORY(planes);
+      SelectWorkflowPlane(i, 1, 1);
+      *workflow_index = i;
+      *plane_index = next_plane;
+      return active_workflow == i && active_plane.group_index >= 0;
+    }
+    FREEMEMORY(planes);
+    *plane_index = -1;
+  }
+  return 0;
+}
+
 /* ------------------ HideWorkflowPlane ------------------------ */
 
 static void HideWorkflowPlane(const workflow_plane *plane){
@@ -320,7 +449,18 @@ static void LoadScalarWorkflowPlane(const workflow_plane *plane){
     }
     slicei->display = 1;
   }
+  if(mslicei->nslices > 0){
+    slicedata *slicei = global_scase.slicecoll.sliceinfo + mslicei->islices[0];
+
+    // ReadSlice selects the slice type only while loading a new file.  Restore
+    // it explicitly when revisiting an already-loaded workflow, otherwise the
+    // renderer continues filtering for the previously selected quantity.
+    slicefile_labelindex = slicei->slicefile_labelindex;
+  }
   SetLoadedSliceBounds(mslicei->islices, mslicei->nslices);
+  UpdateSliceFilenum();
+  plotstate = GetPlotState(DYNAMIC_PLOTS);
+  UpdateShow();
 }
 
 /* ------------------ LoadVectorWorkflowPlane ------------------------ */
@@ -340,7 +480,15 @@ static void LoadVectorWorkflowPlane(const workflow_plane *plane){
     vslicei->display = 1;
     if(slice_list != NULL && vslicei->ival >= 0)slice_list[nslices++] = vslicei->ival;
   }
-  if(nslices > 0)SetLoadedSliceBounds(slice_list, nslices);
+  if(nslices > 0){
+    slicedata *slicei = global_scase.slicecoll.sliceinfo + slice_list[0];
+
+    slicefile_labelindex = slicei->slicefile_labelindex;
+    SetLoadedSliceBounds(slice_list, nslices);
+    UpdateSliceFilenum();
+    plotstate = GetPlotState(DYNAMIC_PLOTS);
+    UpdateShow();
+  }
   FREEMEMORY(slice_list);
 }
 
@@ -359,7 +507,7 @@ static void ApplyWorkflowColorbar(const result_workflow *workflow){
 
 /* ------------------ ApplyWorkflowBounds ------------------------ */
 
-static void ApplyWorkflowBounds(const result_workflow *workflow, const workflow_plane *plane){
+static void ApplyWorkflowBounds(result_workflow *workflow, const workflow_plane *plane){
   float valmin = 1.0f, valmax = 0.0f, configured_min = 0.0f, configured_max = 0.0f;
   int set_valmin = BOUND_LOADED_MIN, set_valmax = BOUND_LOADED_MAX;
   const char *bounds_label = workflow->slice_label;
@@ -377,9 +525,21 @@ static void ApplyWorkflowBounds(const result_workflow *workflow, const workflow_
     if(mslicei->nslices > 0)bounds_label = global_scase.slicecoll.sliceinfo[mslicei->islices[0]].label.shortlabel;
   }
 
+  if(workflow->fixed_bounds_valid == 1){
+    SetSliceMin(BOUND_SET_MIN, workflow->fixed_min, (char *)bounds_label);
+    SetSliceMax(BOUND_SET_MAX, workflow->fixed_max, (char *)bounds_label);
+    return;
+  }
   GLUIGetMinMax(BOUND_SLICE, (char *)bounds_label,
                 &set_valmin, &configured_min, &set_valmax, &configured_max);
-  if(set_valmin == BOUND_SET_MIN && set_valmax == BOUND_SET_MAX)return;
+  if(set_valmin == BOUND_SET_MIN && set_valmax == BOUND_SET_MAX){
+    workflow->fixed_bounds_valid = 1;
+    workflow->fixed_min = configured_min;
+    workflow->fixed_max = configured_max;
+    SetSliceMin(BOUND_SET_MIN, workflow->fixed_min, (char *)bounds_label);
+    SetSliceMax(BOUND_SET_MAX, workflow->fixed_max, (char *)bounds_label);
+    return;
+  }
 
   if(plane->is_vector == 1){
     multivslicedata *mvslicei = global_scase.slicecoll.multivsliceinfo + plane->group_index;
@@ -424,6 +584,31 @@ static void ApplyWorkflowBounds(const result_workflow *workflow, const workflow_
   }
 }
 
+/* ------------------ CacheWorkflowBounds ------------------------ */
+
+static void CacheWorkflowBounds(result_workflow *workflow){
+  float configured_min = 0.0f, configured_max = 0.0f;
+  int set_valmin = BOUND_LOADED_MIN, set_valmax = BOUND_LOADED_MAX;
+
+  if(workflow->fixed_bounds_valid == 1)return;
+  GLUIGetMinMax(BOUND_SLICE, workflow->slice_label,
+                &set_valmin, &configured_min, &set_valmax, &configured_max);
+  if(set_valmin != BOUND_SET_MIN || set_valmax != BOUND_SET_MAX)return;
+  workflow->fixed_bounds_valid = 1;
+  workflow->fixed_min = configured_min;
+  workflow->fixed_max = configured_max;
+}
+
+/* ------------------ CacheAllWorkflowBounds ------------------------ */
+
+static void CacheAllWorkflowBounds(void){
+  int i;
+
+  for(i = 0; i < NRESULT_WORKFLOWS; i++){
+    if(workflows[i].configured == 1)CacheWorkflowBounds(workflows + i);
+  }
+}
+
 /* ------------------ SaveWorkflowCameraClip ------------------------ */
 
 static void SaveWorkflowCameraClip(void){
@@ -455,7 +640,47 @@ static void RestoreWorkflowCameraClip(void){
 /* ------------------ SetFittedAxisView ------------------------ */
 
 static void SetFittedAxisView(int view){
-  SetCameraView(camera_current, view);
+  int fit_option;
+
+  switch(view){
+    case MENU_VIEW_XMIN:
+    case MENU_VIEW_XMAX:
+      fit_option = 1;
+      break;
+    case MENU_VIEW_YMIN:
+    case MENU_VIEW_YMAX:
+      fit_option = 2;
+      break;
+    case MENU_VIEW_ZMIN:
+    case MENU_VIEW_ZMAX:
+      fit_option = 3;
+      break;
+    default:
+      return;
+  }
+
+  // Axis-view helpers restore the saved exterior camera in orthographic mode.
+  // Reinitialize the camera so saved pan, centre and zoom values cannot affect
+  // result review views, then fit the visible model dimensions for this axis.
+  if(projection_type == PROJECTION_ORTHOGRAPHIC){
+    float fitted_near;
+    int use_geom_factors_save = use_geom_factors;
+
+    SetCameraView(camera_current, view);
+    // Review images must contain the complete FDS domain. Geometry-derived
+    // extents can be asymmetric or omit empty parts of the domain.
+    use_geom_factors = 0;
+    InitCamera(camera_current, "current");
+    UpdateCameraYpos(camera_current, fit_option);
+    use_geom_factors = use_geom_factors_save;
+    // Leave room for labels and the time bar around a nominal zoom-1 view.
+    fitted_near = -camera_current->eye[1] - 1.0f;
+    camera_current->eye[1] = -1.25f * fitted_near - 1.0f;
+  }
+  else{
+    InitCamera(camera_current, "current");
+    SetCameraView(camera_current, view);
+  }
   if(rotation_type == ROTATION_3AXIS){
     camera_current->quat_defined = 0;
     Camera2Quat(camera_current, quat_general, quat_rotation);
@@ -593,6 +818,9 @@ static void SelectWorkflowPlane(int workflow_index, int apply_clip_view, int dir
     fprintf(stderr, "*** Warning: RESULTWORKFLOW %s is not configured\n", workflow->name);
     return;
   }
+  // Loading a slice may replace fixed INI bounds with its loaded-data range.
+  // Preserve the configured workflow range before the first file is loaded.
+  CacheAllWorkflowBounds();
   nplanes = BuildWorkflowPlanes(workflow, is_vector, &planes);
   if(nplanes == 0){
     fprintf(stderr, "*** Warning: no %s slices match label %s\n", workflow->name, workflow->slice_label);
@@ -627,10 +855,10 @@ static void SelectWorkflowPlane(int workflow_index, int apply_clip_view, int dir
   if(active_plane.is_vector == 1)LoadVectorWorkflowPlane(&active_plane);
   else LoadScalarWorkflowPlane(&active_plane);
   ApplyWorkflowColorbar(workflow);
+  RestoreWorkflowTime(selected_time, selected_time_valid, selected_stept);
   ApplyWorkflowBounds(workflow, &active_plane);
   UpdateSliceBounds2();
   UpdateRGBColors(colorbar_select_index);
-  RestoreWorkflowTime(selected_time, selected_time_valid, selected_stept);
   if(apply_clip_view == 1)ApplyWorkflowClipView(&active_plane);
   GLUTPOSTREDISPLAY;
   FREEMEMORY(planes);

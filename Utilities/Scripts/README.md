@@ -2,6 +2,30 @@
 
 This directory contains scripts for generating images and animations of FDS cases.  It also contains utility scripts used by other scripts in this repo, scripts for setting up the graphics environment for the image generating scripts and for identifying Git and compiler versions when building smoke iew. 
 
+## capture_result_slices.py
+
+This script opens a Smokeview case and captures every slice configured for the
+result-review shortcuts at 150 s (or the nearest available frame).  Each PNG
+uses the fitted axis view at the default zoom and clips blockages at the slice
+coordinate from the domain-maximum side.  Outline viewing is disabled.  The
+on-screen result label and clipping position are included in each image.  By
+default Smokeview uses a borderless fullscreen window and renders at the
+dimensions of the user's current display.
+
+```shell
+capture_result_slices.py path/to/case.smv
+```
+
+Images are written to `path/to/case_slice_captures`.  Use `-o DIR` to choose a
+different directory, `--overwrite` to replace existing images,
+`--size WIDTHxHEIGHT` to use a windowed capture at an explicit resolution, or
+`--smokeview EXE` to select a Smokeview executable.  Use `--time SECONDS` to
+override the default capture time.  When no executable is specified, the
+script prefers a Smokeview built in this repository before checking the `SMV`
+environment variable and `PATH`; older Smokeview releases do not contain the
+required `RENDERRESULTS` command.  Run `capture_result_slices.py --help` for
+all options.
+
 ## slice2html.sh
 
 This script is used to generate an HTML page from an smv file. To use it, add an alias to your startup file, typically .bashrc (change the ... in the first part of the path to match your repo location):

@@ -4767,6 +4767,33 @@ Smokeview will assign the filename automatically if the
 entry after the {\tt RENDERONCE}\ keyword is blank.
 
 %%+++++++++++++++++++++++
+\hitemssf{RENDERFULLSCREEN}\ Switch the Smokeview graphics window to
+borderless fullscreen mode.  This command has no parameters and is primarily
+useful before scripted image captures.
+Usage:
+\begin{lstlisting}
+RENDERFULLSCREEN
+\end{lstlisting}
+
+%%+++++++++++++++++++++++
+\hitemssf{RENDERRESULTS}\ Render every slice configured for the result-review
+workflows.  Slices are rendered in visibility, temperature, velocity and
+pressure order, with each workflow ordered by X, Y and Z coordinate.  Each
+image uses the fitted axis view at the default zoom and clips blockages from
+the domain-maximum side at the slice coordinate.  Outline viewing is disabled
+for the captures.  The first parameter is used as the start of each output
+filename.  The second parameter sets the simulation time for every capture.
+Usage:
+\begin{lstlisting}
+RENDERRESULTS
+ case_name
+ 150.0
+\end{lstlisting}
+The {\tt capture_result_slices.py}\ utility generates and runs a script using
+this command for a specified Smokeview case.  It captures at 150~s by default;
+the {\tt --time} option selects another simulation time.
+
+%%+++++++++++++++++++++++
 \hitemssf{RENDERDOUBLEONCE}\ Render the current scene at double resolution.
 Usage:
 \begin{lstlisting}
