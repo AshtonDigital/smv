@@ -62,6 +62,49 @@ static int next_view_stage = 0;
 static void HideWorkflowPlane(const workflow_plane *plane);
 static void RestoreWorkflowCameraClip(void);
 
+/* ------------------ GetResultWorkflowStatus ------------------------ */
+
+int GetResultWorkflowStatus(char *label, int label_size){
+  result_workflow *workflow;
+  float clip_value = 0.0f;
+  int clip_enabled = 0;
+  char axis;
+
+  if(label == NULL || label_size <= 0)return 0;
+  label[0] = 0;
+  if(active_workflow < 0 || active_workflow >= NRESULT_WORKFLOWS || active_plane.group_index < 0)return 0;
+
+  workflow = workflows + active_workflow;
+  axis = (char)('X' + active_plane.idir - 1);
+  switch(active_plane.idir){
+    case 1:
+      clip_enabled = clipinfo.clip_xmax;
+      clip_value = clipinfo.xmax;
+      break;
+    case 2:
+      clip_enabled = clipinfo.clip_ymax;
+      clip_value = clipinfo.ymax;
+      break;
+    case 3:
+      clip_enabled = clipinfo.clip_zmax;
+      clip_value = clipinfo.zmax;
+      break;
+    default:
+      return 0;
+  }
+
+  if(clip_mode != CLIP_OFF && clip_enabled == 1){
+    snprintf(label, (size_t)label_size, "%s (%s) | %c slice: %.3f m | clip: %c <= %.3f m",
+             workflow->colorbar_label, workflow->slice_label, axis, active_plane.position,
+             axis, clip_value);
+  }
+  else{
+    snprintf(label, (size_t)label_size, "%s (%s) | %c slice: %.3f m | clip: off",
+             workflow->colorbar_label, workflow->slice_label, axis, active_plane.position);
+  }
+  return 1;
+}
+
 /* ------------------ RestoreWorkflowTime ------------------------ */
 
 static void RestoreWorkflowTime(float selected_time, int selected_time_valid, int selected_stept){

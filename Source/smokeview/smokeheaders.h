@@ -182,6 +182,7 @@ EXTERNCPP void NextZIndex(int inc,int flag);
 //*** result_workflow.c headers
 
 EXTERNCPP void ConfigureResultWorkflow(const char *name, const char *slice_label, const char *workflow_colorbar_label);
+EXTERNCPP int  GetResultWorkflowStatus(char *label, int label_size);
 EXTERNCPP void ResetResultWorkflows(void);
 EXTERNCPP void ResetGLTime(void);
 EXTERNCPP void ReshapeCB(int width, int height);
