@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Render every configured Smokeview result-review slice."""
+"""Render every configured Smokeview result-review slice.
+
+Dependencies:
+  - Python 3.10 or newer.
+  - A graphical desktop session (X11 or Wayland on Linux).
+  - A Smokeview executable built with RENDERRESULTS and RENDERFULLSCREEN.
+  - ImageMagick (``magick`` or ``convert``) for model cropping; use
+    ``--no-crop`` when ImageMagick is intentionally unavailable.
+
+Optional display-resolution probes: ``xrandr`` or ``xdpyinfo``.  If neither
+is installed, the script uses 1920x1080 unless ``--size`` is supplied.
+"""
 
 from __future__ import annotations
 
@@ -265,16 +276,9 @@ def crop_capture(
         cropped_path.unlink(missing_ok=True)
 
 
-def crop_captures(captures: list[Capture], padding: int) -> None:
-    convert_command = image_magick_command()
-    if convert_command is None:
-        print(
-            "capture_result_slices: warning: ImageMagick was not found; "
-            "leaving captures uncropped",
-            file=sys.stderr,
-        )
-        return
-
+def crop_captures(
+    captures: list[Capture], padding: int, convert_command: list[str]
+) -> None:
     for capture in captures:
         capture.model_bounds = detect_model_bounds(capture, convert_command)
         if capture.model_bounds is None:
@@ -377,6 +381,64 @@ def find_smokeview(explicit: Path | None) -> Path:
     )
 
 
+def check_dependencies(smokeview: Path, crop_enabled: bool) -> list[str] | None:
+    def report(message: str) -> None:
+        print(message, flush=True)
+
+    report("Dependency check:")
+    report(f"  [OK] Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+
+    if sys.platform.startswith("linux"):
+        display = os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+        if not display:
+            raise RuntimeError(
+                "no graphical desktop session was detected; set DISPLAY/WAYLAND_DISPLAY "
+                "or run the script from a desktop terminal"
+            )
+        report(f"  [OK] Graphical display: {display}")
+
+    if not supports_result_capture(smokeview):
+        raise RuntimeError(
+            f"{smokeview} does not support RENDERRESULTS and RENDERFULLSCREEN. "
+            "Build Smokeview from this checkout or pass that executable with --smokeview."
+        )
+    report(f"  [OK] Smokeview capture support: {smokeview}")
+
+    convert_command = image_magick_command()
+    if crop_enabled:
+        if convert_command is None:
+            raise RuntimeError(
+                "ImageMagick is required for model cropping. Install ImageMagick so "
+                "'magick' or 'convert' is on PATH, or use --no-crop."
+            )
+        try:
+            result = subprocess.run(
+                convert_command + ["-version"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise RuntimeError(f"unable to run ImageMagick: {error}") from error
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"ImageMagick dependency check failed: {' '.join(convert_command)} -version"
+            )
+        version = (result.stdout or result.stderr).splitlines()
+        version_label = version[0].strip() if version else convert_command[0]
+        report(f"  [OK] {version_label}")
+    else:
+        report("  [SKIP] ImageMagick cropping disabled by --no-crop")
+
+    resolution_probe = shutil.which("xrandr") or shutil.which("xdpyinfo")
+    if resolution_probe is None:
+        report("  [OPTIONAL] xrandr/xdpyinfo not found; display-size fallback will be used")
+    else:
+        report(f"  [OK] Display-size probe: {resolution_probe}")
+    return convert_command
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -432,11 +494,7 @@ def main() -> int:
         raise RuntimeError("The output path cannot contain a newline or '#' character")
 
     smokeview = find_smokeview(args.smokeview)
-    if not supports_result_capture(smokeview):
-        raise RuntimeError(
-            f"{smokeview} does not support the RENDERRESULTS command. "
-            "Build Smokeview from this checkout or pass that executable with --smokeview."
-        )
+    convert_command = check_dependencies(smokeview, crop_enabled=not args.no_crop)
     output.mkdir(parents=True, exist_ok=True)
     legacy_pattern = legacy_capture_pattern(prefix)
     human_pattern = human_capture_pattern(prefix)
@@ -506,7 +564,8 @@ def main() -> int:
             )
             return 0
         if not args.no_crop:
-            crop_captures(captures, args.crop_padding)
+            assert convert_command is not None
+            crop_captures(captures, args.crop_padding, convert_command)
         rename_captures(captures, prefix)
         print(f"Finalized {len(captures)} result capture{'s' if len(captures) != 1 else ''}")
         return 0

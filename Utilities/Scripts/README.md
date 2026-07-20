@@ -26,9 +26,10 @@ different directory, `--overwrite` to replace existing images,
 `--smokeview EXE` to select a Smokeview executable.  Use `--time SECONDS` to
 override the default capture time, `--crop-padding PIXELS` to change the white
 border, or `--no-crop` to retain the full render.  Cropping uses ImageMagick;
-if it is unavailable or the model cannot be identified confidently, the
-affected PNG is retained uncropped with a warning.  When no executable is
-specified, the script prefers a Smokeview built in this repository before
+the startup dependency check stops before rendering if ImageMagick is missing,
+unless `--no-crop` is used.  If an individual model cannot be identified
+confidently, that PNG is retained uncropped with a warning.  When no executable
+is specified, the script prefers a Smokeview built in this repository before
 checking the `SMV` environment variable and `PATH`; older Smokeview releases
 do not contain the required `RENDERRESULTS` command.  Run
 `capture_result_slices.py --help` for all options.
