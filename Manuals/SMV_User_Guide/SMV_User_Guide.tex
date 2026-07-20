@@ -6057,15 +6057,20 @@ the selected slice before the cycle restarts.  Each result workflow
 selects its configured colourbar and bounds; mappings in the case INI override
 those in the global INI and the built-in defaults.  The scene is clipped at the
 slice's actual coordinate, viewed from the domain maximum toward the slice and
-fitted at the default zoom.  Geometry and data on the greater-coordinate side
-are removed.
+fitted at the default zoom.  Blockages on the greater-coordinate side are
+removed while slice data remains visible.
+
+\kitem{CTRL SHIFT i, CTRL SHIFT t, CTRL SHIFT v, CTRL SHIFT p}Cycle
+backwards through the corresponding configured result slices.  Reverse cycles
+start at the last matching slice and include the same hidden step before
+restarting.
 
 \kitem{CTRL m}Flip clipping for the active result workflow slice between
 the maximum side and minimum side.  For example, clipping at an X slice
-switches between retaining geometry and data where $X$ is less than or equal
-to the slice coordinate and retaining geometry and data where $X$ is greater
-than or equal to it.  This shortcut has no effect when the active workflow
-slice is not clipped.
+switches between retaining blockages where $X$ is less than or equal to the
+slice coordinate and retaining blockages where $X$ is greater than or equal
+to it.  Slice data is not clipped.  This shortcut has no effect when the
+active workflow slice is not clipped.
 
 
 \kitem{a}Increase slice and PLOT3D vector length (use ALT a to decrease vector length).

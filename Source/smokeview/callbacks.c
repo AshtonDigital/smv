@@ -1654,12 +1654,14 @@ void Keyboard(unsigned char key, int flag){
   meshdata *gbsave,*gbi;
   int i;
   int keystate=0;
+  int workflow_modifiers=0;
 
   if(flag==FROM_CALLBACK){
+    workflow_modifiers = GLUTGETMODIFIERS();
 #ifdef pp_OSX
-    keystate = GLUTGETMODIFIERS();
+    keystate = workflow_modifiers;
 #else
-    keystate = (GLUT_ACTIVE_ALT|GLUT_ACTIVE_CTRL|GLUT_ACTIVE_SHIFT)&GLUTGETMODIFIERS();
+    keystate = (GLUT_ACTIVE_ALT|GLUT_ACTIVE_CTRL)&workflow_modifiers;
 #endif
     if(scriptoutstream!=NULL&&key!='t'&&key!='r'&&key!='R'&&key!=' '&&key!='-'){
       fprintf(scriptoutstream,"KEYBOARD\n");
@@ -1678,14 +1680,16 @@ void Keyboard(unsigned char key, int flag){
   }
   else if(flag==FROM_SCRIPT){
     keystate=script_keystate;
+    workflow_modifiers=script_keystate;
   }
   else if(flag==FROM_SMOKEVIEW_ALT){
     keystate=GLUT_ACTIVE_ALT;
+    workflow_modifiers=keystate;
   }
   GLUTPOSTREDISPLAY;
   key2 = (char)key;
 
-  if(HandleResultWorkflowShortcut(key, keystate) == 1)return;
+  if(HandleResultWorkflowShortcut(key, workflow_modifiers) == 1)return;
 
   switch(key2){
 #define DEVNO_HRRNO   0

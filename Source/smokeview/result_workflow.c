@@ -25,7 +25,7 @@ typedef struct {
   char slice_label[WORKFLOW_LABEL_LEN];
   char colorbar_label[WORKFLOW_LABEL_LEN];
   int configured;
-  int next_plane;
+  int current_plane;
 } result_workflow;
 
 typedef struct {
@@ -36,10 +36,10 @@ typedef struct {
 } workflow_plane;
 
 static result_workflow workflows[NRESULT_WORKFLOWS] = {
-  {"visibility",  "VIS_C0.9H0.1", "Visibility",  1, 0},
-  {"temperature", "temp",          "Temperature", 1, 0},
-  {"velocity",    "vel",           "Velocity",    1, 0},
-  {"pressure",    "pres",          "Pressure",    1, 0}
+  {"visibility",  "VIS_C0.9H0.1", "Visibility",  1, -1},
+  {"temperature", "temp",          "Temperature", 1, -1},
+  {"velocity",    "vel",           "Velocity",    1, -1},
+  {"pressure",    "pres",          "Pressure",    1, -1}
 };
 
 static const char *default_slice_labels[NRESULT_WORKFLOWS] = {
@@ -56,6 +56,8 @@ static int workflow_camera_clip_saved = 0;
 static cameradata workflow_camera_saved;
 static clipdata workflow_clip_saved;
 static int workflow_clip_mode_saved = CLIP_OFF;
+static float workflow_zaxis_angles_saved[3];
+static int workflow_zoomindex_saved = ZOOMINDEX_ONE;
 static int last_view_axis = -1;
 static int next_view_stage = 0;
 
@@ -127,7 +129,14 @@ static void RestoreWorkflowTime(float selected_time, int selected_time_valid, in
   float min_time_diff;
   int i, selected_frame = 0;
 
-  if(selected_time_valid == 0 || global_times == NULL || nglobal_times <= 0)return;
+  if(global_times == NULL || nglobal_times <= 0){
+    stept = selected_stept;
+    return;
+  }
+  if(selected_time_valid == 0){
+    SetTimeFrameIndex(iglobal_times, selected_stept);
+    return;
+  }
   min_time_diff = ABS(global_times[0] - selected_time);
   for(i = 1; i < nglobal_times; i++){
     float time_diff = ABS(global_times[i] - selected_time);
@@ -151,7 +160,7 @@ void ResetResultWorkflows(void){
     strcpy(workflows[i].slice_label, default_slice_labels[i]);
     strcpy(workflows[i].colorbar_label, default_colorbar_labels[i]);
     workflows[i].configured = 1;
-    workflows[i].next_plane = 0;
+    workflows[i].current_plane = -1;
   }
   active_workflow = -1;
   active_plane.group_index = -1;
@@ -191,7 +200,7 @@ void ConfigureResultWorkflow(const char *name, const char *slice_label, const ch
   strncpy(workflows[index].colorbar_label, workflow_colorbar_label, WORKFLOW_LABEL_LEN - 1);
   workflows[index].colorbar_label[WORKFLOW_LABEL_LEN - 1] = 0;
   workflows[index].configured = 1;
-  workflows[index].next_plane = 0;
+  workflows[index].current_plane = -1;
 }
 
 /* ------------------ SliceLabelMatches ------------------------ */
@@ -421,7 +430,9 @@ static void SaveWorkflowCameraClip(void){
   if(workflow_camera_clip_saved == 1)return;
   memcpy(&workflow_camera_saved, camera_current, sizeof(cameradata));
   memcpy(&workflow_clip_saved, &clipinfo, sizeof(clipdata));
+  memcpy(workflow_zaxis_angles_saved, zaxis_angles, sizeof(workflow_zaxis_angles_saved));
   workflow_clip_mode_saved = clip_mode;
+  workflow_zoomindex_saved = zoomindex;
   workflow_camera_clip_saved = 1;
 }
 
@@ -432,6 +443,9 @@ static void RestoreWorkflowCameraClip(void){
   memcpy(&clipinfo, &workflow_clip_saved, sizeof(clipdata));
   clip_mode = workflow_clip_mode_saved;
   CopyCamera(camera_current, &workflow_camera_saved);
+  memcpy(zaxis_angles, workflow_zaxis_angles_saved, sizeof(workflow_zaxis_angles_saved));
+  zoomindex = workflow_zoomindex_saved;
+  if(rotation_type == ROTATION_3AXIS)Camera2Quat(camera_current, quat_general, quat_rotation);
   GLUIUpdateClip();
   updatefacelists = 1;
   global_scase.updatefaces = 1;
@@ -442,6 +456,10 @@ static void RestoreWorkflowCameraClip(void){
 
 static void SetFittedAxisView(int view){
   SetCameraView(camera_current, view);
+  if(rotation_type == ROTATION_3AXIS){
+    camera_current->quat_defined = 0;
+    Camera2Quat(camera_current, quat_general, quat_rotation);
+  }
   camera_current->zoom = 1.0f;
   zoom = 1.0f;
   zoomindex = ZOOMINDEX_ONE;
@@ -484,7 +502,7 @@ static void ApplyWorkflowClipView(const workflow_plane *plane){
   clipinfo.clip_ymax = 0;
   clipinfo.clip_zmin = 0;
   clipinfo.clip_zmax = 0;
-  clip_mode = CLIP_BLOCKAGES_DATA;
+  clip_mode = CLIP_BLOCKAGES;
   *clip_enabled = 1;
   *clip_value = plane->position;
   Clip2Cam(camera_current);
@@ -556,12 +574,13 @@ static int FlipWorkflowClipSide(void){
 
 /* ------------------ SelectWorkflowPlane ------------------------ */
 
-static void SelectWorkflowPlane(int workflow_index, int apply_clip_view){
+static void SelectWorkflowPlane(int workflow_index, int apply_clip_view, int direction){
   result_workflow *workflow = workflows + workflow_index;
   workflow_plane *planes = NULL;
   float selected_time = 0.0f;
   int selected_time_valid = 0;
   int selected_stept = stept;
+  int plane_index;
   int is_vector = 0;
   int nplanes;
 
@@ -582,10 +601,15 @@ static void SelectWorkflowPlane(int workflow_index, int apply_clip_view){
 
   HideWorkflowPlane(&active_plane);
   if(apply_clip_view == 0)RestoreWorkflowCameraClip();
-  if(active_workflow != workflow_index)workflow->next_plane = 0;
+  if(active_workflow == workflow_index){
+    plane_index = workflow->current_plane + direction;
+  }
+  else{
+    plane_index = direction > 0 ? 0 : nplanes - 1;
+  }
 
-  if(workflow->next_plane >= nplanes){
-    workflow->next_plane = 0;
+  if(plane_index < 0 || plane_index >= nplanes){
+    workflow->current_plane = -1;
     active_workflow = -1;
     active_plane.group_index = -1;
     RestoreWorkflowCameraClip();
@@ -594,12 +618,12 @@ static void SelectWorkflowPlane(int workflow_index, int apply_clip_view){
     return;
   }
 
-  active_plane = planes[workflow->next_plane];
+  workflow->current_plane = plane_index;
+  active_plane = planes[plane_index];
   active_workflow = workflow_index;
-  workflow->next_plane++;
   PRINTF("Review workflow %s: %c slice at %.3f (%i of %i)\n",
          workflow->name, 'X' + active_plane.idir - 1, active_plane.position,
-         workflow->next_plane, nplanes);
+         plane_index + 1, nplanes);
   if(active_plane.is_vector == 1)LoadVectorWorkflowPlane(&active_plane);
   else LoadScalarWorkflowPlane(&active_plane);
   ApplyWorkflowColorbar(workflow);
@@ -636,6 +660,7 @@ static void CycleAxisView(int axis){
 
 int HandleResultWorkflowShortcut(unsigned char key, int modifiers){
   int apply_clip_view;
+  int direction;
   unsigned char lower_key;
 
   if((modifiers & GLUT_ACTIVE_CTRL) == 0 || (modifiers & GLUT_ACTIVE_ALT) != 0)return 0;
@@ -643,6 +668,7 @@ int HandleResultWorkflowShortcut(unsigned char key, int modifiers){
   if(lower_key >= 1 && lower_key <= 26)lower_key = (unsigned char)('a' + lower_key - 1);
   if(lower_key >= 'A' && lower_key <= 'Z')lower_key = (unsigned char)(lower_key - 'A' + 'a');
   apply_clip_view = 1;
+  direction = (modifiers & GLUT_ACTIVE_SHIFT) != 0 ? -1 : 1;
 
   switch(lower_key){
     case 'x':
@@ -658,16 +684,16 @@ int HandleResultWorkflowShortcut(unsigned char key, int modifiers){
       CycleAxisView(2);
       return 1;
     case 'i':
-      SelectWorkflowPlane(WORKFLOW_VISIBILITY, apply_clip_view);
+      SelectWorkflowPlane(WORKFLOW_VISIBILITY, apply_clip_view, direction);
       return 1;
     case 't':
-      SelectWorkflowPlane(WORKFLOW_TEMPERATURE, apply_clip_view);
+      SelectWorkflowPlane(WORKFLOW_TEMPERATURE, apply_clip_view, direction);
       return 1;
     case 'v':
-      SelectWorkflowPlane(WORKFLOW_VELOCITY, apply_clip_view);
+      SelectWorkflowPlane(WORKFLOW_VELOCITY, apply_clip_view, direction);
       return 1;
     case 'p':
-      SelectWorkflowPlane(WORKFLOW_PRESSURE, apply_clip_view);
+      SelectWorkflowPlane(WORKFLOW_PRESSURE, apply_clip_view, direction);
       return 1;
     case 'm':
       return FlipWorkflowClipSide();
