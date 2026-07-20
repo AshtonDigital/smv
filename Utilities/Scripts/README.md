@@ -29,10 +29,28 @@ border, or `--no-crop` to retain the full render.  Cropping uses ImageMagick;
 the startup dependency check stops before rendering if ImageMagick is missing,
 unless `--no-crop` is used.  If an individual model cannot be identified
 confidently, that PNG is retained uncropped with a warning.  When no executable
-is specified, the script prefers a Smokeview built in this repository before
-checking the `SMV` environment variable and `PATH`; older Smokeview releases
-do not contain the required `RENDERRESULTS` command.  Run
-`capture_result_slices.py --help` for all options.
+is specified, the script first looks for a compatible Smokeview beside itself,
+then checks this repository's build, the `SMV` environment variable, and
+`PATH`; older Smokeview releases do not contain the required `RENDERRESULTS`
+command.  Run `capture_result_slices.py --help` for all options.
+
+Users without a source checkout can receive a portable folder containing the
+matching custom Smokeview build and its resources:
+
+```text
+ashton-smokeview-linux-x64/
+|-- capture_result_slices.py
+|-- smokeview
+|-- smokeview.ini
+`-- objects.svo
+```
+
+The launcher recognises `smokeview`, `smokeview_linux`, or `smokeview.exe`
+beside itself.  After installing Python and ImageMagick, a user can extract the
+folder and run `./capture_result_slices.py path/to/case.smv` without cloning or
+building the repository.  Each bundle must be built for the user's operating
+system and architecture, and should also include any required `colorbars/` and
+`textures/` directories.
 
 ## slice2html.sh
 
@@ -75,7 +93,7 @@ how images are generated (number of processes, what queue to use) and an option 
 ```
           slice: TEMPERATURE/Y=1.6
          bounds: default
-      color bar: show
+      colour bar: show
        time bar: show
       font size: small
       viewpoint: VIEWYMIN
@@ -89,7 +107,7 @@ how images are generated (number of processes, what queue to use) and an option 
 
 s - select slice
 b - set bounds
-C - hide color bar
+C - hide colour bar
 T - hide time bar
 F - toggle font size
 v - set viewpoint

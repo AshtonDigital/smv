@@ -166,8 +166,8 @@ def human_capture_name(prefix: str, capture: Capture) -> str:
     )
 
 
-def is_white_component(color: str) -> bool:
-    compact = color.replace(" ", "").lower()
+def is_white_component(colour: str) -> bool:
+    compact = colour.replace(" ", "").lower()
     return (
         "255,255,255" in compact
         or "gray(255)" in compact
@@ -221,15 +221,15 @@ def detect_model_bounds(
     ymax = max(component[3] for component in components)
     box_width = xmax - xmin
     box_height = ymax - ymin
-    center_x = (xmin + xmax) / 2.0
-    center_y = (ymin + ymax) / 2.0
+    centre_x = (xmin + xmax) / 2.0
+    centre_y = (ymin + ymax) / 2.0
     if box_width < 0.02 * capture.width or box_height < 0.02 * capture.height:
         return None
     if box_width > 0.90 * capture.width or box_height > 0.96 * capture.height:
         return None
-    if not (0.15 * capture.width <= center_x <= 0.85 * capture.width):
+    if not (0.15 * capture.width <= centre_x <= 0.85 * capture.width):
         return None
-    if not (0.05 * capture.height <= center_y <= 0.95 * capture.height):
+    if not (0.05 * capture.height <= centre_y <= 0.95 * capture.height):
         return None
     return xmin, ymin, xmax, ymax
 
@@ -360,7 +360,11 @@ def find_smokeview(explicit: Path | None) -> Path:
         return explicit
 
     candidates: list[Path] = []
-    repo_root = Path(__file__).resolve().parents[2]
+    script_dir = Path(__file__).resolve().parent
+    for executable_name in ("smokeview", "smokeview_linux", "smokeview.exe"):
+        candidates.append(script_dir / executable_name)
+
+    repo_root = script_dir.parents[1]
     candidates.append(repo_root / "cbuild" / "review" / "smokeview")
     candidates.extend((repo_root / "Build" / "smokeview").glob("*/smokeview_*"))
 
@@ -377,7 +381,8 @@ def find_smokeview(explicit: Path | None) -> Path:
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return candidate
     raise RuntimeError(
-        "Smokeview was not found. Pass --smokeview EXE, set SMV, or add smokeview to PATH."
+        "Smokeview was not found. Place it beside this script, pass --smokeview EXE, "
+        "set SMV, build this checkout, or add smokeview to PATH."
     )
 
 
@@ -453,7 +458,10 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "-e", "--smokeview", type=executable_file,
-        help="Smokeview executable (otherwise use this repository's build, SMV, or PATH)",
+        help=(
+            "Smokeview executable (otherwise use a sibling executable, this repository's "
+            "build, SMV, or PATH)"
+        ),
     )
     parser.add_argument("--prefix", help="output filename prefix (default: case name)")
     parser.add_argument(
@@ -567,7 +575,7 @@ def main() -> int:
             assert convert_command is not None
             crop_captures(captures, args.crop_padding, convert_command)
         rename_captures(captures, prefix)
-        print(f"Finalized {len(captures)} result capture{'s' if len(captures) != 1 else ''}")
+        print(f"Finalised {len(captures)} result capture{'s' if len(captures) != 1 else ''}")
         return 0
     finally:
         if remove_script:
