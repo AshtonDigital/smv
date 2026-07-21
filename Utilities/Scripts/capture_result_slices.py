@@ -533,6 +533,8 @@ def main() -> int:
         + (" 0 0\n" if fullscreen else f" {width} {height}\n")
         + "RENDERTYPE\n"
         " PNG\n"
+        "PROJECTION\n"
+        " 2\n"
         "RENDERDIR\n"
         f" {output}{os.sep}\n"
         "RENDERRESULTS\n"

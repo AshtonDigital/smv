@@ -187,6 +187,7 @@ EXTERNCPP int  CaptureNextResultWorkflowPlane(int *workflow_index, int *plane_in
                                               const char *prefix, char *render_base, int render_base_size);
 EXTERNCPP int  GetResultWorkflowStatus(char *label, int label_size);
 EXTERNCPP const char *GetResultWorkflowCaptureFeature(void);
+EXTERNCPP int  RefitActiveResultWorkflowView(void);
 EXTERNCPP void ReapplyResultWorkflowCaptureClip(void);
 EXTERNCPP void ResetResultWorkflows(void);
 EXTERNCPP int  SetResultWorkflowCaptureTime(float requested_time, float *capture_time);

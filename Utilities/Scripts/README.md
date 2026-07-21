@@ -7,9 +7,10 @@ This directory contains scripts for generating images and animations of FDS case
 This script opens a Smokeview case and captures every slice configured for the
 result-review shortcuts at 150 s (or the nearest available frame).  Each PNG
 uses the fitted axis view at the default zoom and clips blockages at the slice
-coordinate from the domain-maximum side.  Outline viewing is disabled.  The
-full render includes the on-screen result label and clipping position.  By
-default Smokeview uses a borderless fullscreen window, renders at the
+coordinate from the domain-maximum side.  Size-preserving projection is enabled
+to remove perspective, and outline viewing is disabled.  The full render
+includes the on-screen result label and clipping position.  By default
+Smokeview uses a borderless fullscreen window, renders at the
 dimensions of the user's current display, then crops each PNG to the model
 with a 20-pixel white border.  All captures for the same X, Y or Z axis use a
 common crop size; the colourbar, labels and time bar are removed.  Final names

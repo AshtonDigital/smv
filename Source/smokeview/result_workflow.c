@@ -673,6 +673,10 @@ static void SetFittedAxisView(int view){
     InitCamera(camera_current, "current");
     UpdateCameraYpos(camera_current, fit_option);
     use_geom_factors = use_geom_factors_save;
+    // UpdateCameraYpos stores the size-preserving camera distance separately.
+    // Using its perspective eye position here can put the orthographic near
+    // plane close to zero, particularly for Z views, causing extreme zoom.
+    camera_current->eye[1] = camera_current->isometric_y;
     // Leave room for labels and the time bar around a nominal zoom-1 view.
     fitted_near = -camera_current->eye[1] - 1.0f;
     camera_current->eye[1] = -1.25f * fitted_near - 1.0f;
@@ -689,6 +693,42 @@ static void SetFittedAxisView(int view){
   zoom = 1.0f;
   zoomindex = ZOOMINDEX_ONE;
   GLUIUpdateZoom();
+}
+
+/* ------------------ RefitActiveResultWorkflowView ------------------------ */
+
+int RefitActiveResultWorkflowView(void){
+  clipdata clip_saved;
+  int clip_mode_saved, view;
+
+  if(active_workflow < 0 || active_plane.group_index < 0)return 0;
+  switch(active_plane.idir){
+    case 1:
+      view = MENU_VIEW_XMAX;
+      break;
+    case 2:
+      view = MENU_VIEW_YMAX;
+      break;
+    case 3:
+      view = MENU_VIEW_ZMAX;
+      break;
+    default:
+      return 0;
+  }
+
+  // Projection changes use a generic Y-axis camera fit. Reapply the active
+  // workflow's axis fit, while retaining its clipping side and coordinate.
+  memcpy(&clip_saved, &clipinfo, sizeof(clipdata));
+  clip_mode_saved = clip_mode;
+  SetFittedAxisView(view);
+  memcpy(&clipinfo, &clip_saved, sizeof(clipdata));
+  clip_mode = clip_mode_saved;
+  Clip2Cam(camera_current);
+  GLUIUpdateClip();
+  updatefacelists = 1;
+  global_scase.updatefaces = 1;
+  GLUTPOSTREDISPLAY;
+  return 1;
 }
 
 /* ------------------ ApplyWorkflowClipView ------------------------ */
