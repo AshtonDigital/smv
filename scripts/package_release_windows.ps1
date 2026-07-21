@@ -90,14 +90,22 @@ $BuildDir = Get-RepoPath $BuildDir
 $OutputDir = Get-RepoPath $OutputDir
 
 if (-not $Version) {
-    $ProjectDeclaration = Select-String `
-        -Path (Join-Path $RepoRoot "CMakeLists.txt") `
-        -Pattern 'project\(smv .*VERSION ([0-9]+\.[0-9]+\.[0-9]+)' |
-        Select-Object -First 1
-    if (-not $ProjectDeclaration) {
-        throw "Could not determine the version from CMakeLists.txt."
+    $CMakeContents = Get-Content -LiteralPath (Join-Path $RepoRoot "CMakeLists.txt") -Raw
+    $ProjectDeclaration = [regex]::Match(
+        $CMakeContents,
+        'project\(smv .*VERSION ([0-9]+\.[0-9]+\.[0-9]+)'
+    )
+    $AshtonDeclaration = [regex]::Match(
+        $CMakeContents,
+        'set\(ASHTON_RELEASE\s+"([^"]+)"\)'
+    )
+    if (-not $ProjectDeclaration.Success) {
+        throw "Could not determine the upstream Smokeview version from CMakeLists.txt."
     }
-    $Version = $ProjectDeclaration.Matches[0].Groups[1].Value
+    if (-not $AshtonDeclaration.Success) {
+        throw "Could not determine the Ashton release from CMakeLists.txt."
+    }
+    $Version = $ProjectDeclaration.Groups[1].Value + "-" + $AshtonDeclaration.Groups[1].Value
 }
 $Version = $Version.TrimStart("v")
 if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]*$') {
@@ -152,6 +160,19 @@ $BinaryCandidates = @(
 $Binary = $BinaryCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $Binary) {
     throw "Release executable not found under $BuildDir."
+}
+
+$VersionOutput = (& $Binary "-version" 2>&1 | Out-String)
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not read the revision from the release executable."
+}
+$BinaryVersionMatch = [regex]::Match($VersionOutput, '(?m)^Revision\s*:\s*(\S+)\s*$')
+if (-not $BinaryVersionMatch.Success) {
+    throw "Could not read the revision from the release executable."
+}
+$BinaryVersion = $BinaryVersionMatch.Groups[1].Value
+if ($BinaryVersion -ne $Version) {
+    throw "Package version $Version does not match executable revision $BinaryVersion; rebuild after updating ASHTON_RELEASE in CMakeLists.txt."
 }
 
 $Architecture = "x64"

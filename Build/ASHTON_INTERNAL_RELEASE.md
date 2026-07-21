@@ -131,7 +131,6 @@ self-extracting `.sh` installer and Windows produces an NSIS `.exe` installer.
 
 ```bash
 scripts/package_release_linux.sh \
-  --version 0.1.0 \
   --config path/to/curated/smokeview.ini
 ```
 
@@ -139,7 +138,6 @@ From an x64 Visual Studio Developer PowerShell on Windows:
 
 ```powershell
 scripts\package_release_windows.ps1 `
-  -Version 0.1.0 `
   -ConfigFile path\to\curated\smokeview.ini
 ```
 
@@ -149,6 +147,12 @@ with `--skip-build`/`-SkipBuild`. The Windows package uses the static MSVC
 runtime so that installing the Visual C++ Redistributable is not a prerequisite.
 Creating the Windows installer also requires NSIS 3 and its `makensis.exe`
 compiler.
+
+The release version combines the upstream Smokeview version with the Ashton
+fork release, for example `6.11.2-af1`. Increment `ASHTON_RELEASE` in the root
+`CMakeLists.txt` (`af2`, `af3`, and so on) before creating the next release.
+The packaging scripts derive the version automatically and reject an installer
+whose package version does not match the revision embedded in its executable.
 
 The Windows installer includes `capture_result_slices.py` beside
 `smokeview.exe`. This keeps the capture utility matched to the custom Smokeview

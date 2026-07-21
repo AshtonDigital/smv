@@ -87,7 +87,11 @@ build_dir="$(absolute_from_root "$build_dir")"
 output_dir="$(absolute_from_root "$output_dir")"
 
 if [[ -z "$version" ]]; then
-  version="$(sed -nE 's/.*project\(smv .*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$repo_root/CMakeLists.txt" | head -n 1)"
+  upstream_version="$(sed -nE 's/.*project\(smv .*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$repo_root/CMakeLists.txt" | head -n 1)"
+  ashton_release="$(sed -nE 's/.*set\(ASHTON_RELEASE "([^"]+)"\).*/\1/p' "$repo_root/CMakeLists.txt" | head -n 1)"
+  [[ -n "$upstream_version" ]] || fail "could not determine the upstream Smokeview version from CMakeLists.txt"
+  [[ -n "$ashton_release" ]] || fail "could not determine the Ashton release from CMakeLists.txt"
+  version="${upstream_version}-${ashton_release}"
 fi
 version="${version#v}"
 [[ "$version" =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]] || fail "invalid version: $version"
@@ -109,6 +113,12 @@ fi
 
 binary="$build_dir/smokeview"
 [[ -x "$binary" ]] || fail "release executable not found: $binary"
+
+binary_version="$("$binary" -version 2>&1 | sed -nE 's/^Revision[[:space:]]*:[[:space:]]*//p' | head -n 1)"
+[[ -n "$binary_version" ]] || fail "could not read the revision from the release executable"
+if [[ "$binary_version" != "$version" ]]; then
+  fail "package version $version does not match executable revision $binary_version; rebuild after updating ASHTON_RELEASE in CMakeLists.txt"
+fi
 
 if ldd "$binary" | grep -q 'not found'; then
   ldd "$binary" >&2
@@ -280,6 +290,8 @@ ln -sfn "$target/smokeview" "$link_dir/smokeview"
 echo
 echo "Installed Ashton Smokeview in $target"
 echo "Launcher: $link_dir/smokeview"
+echo "Run now: $link_dir/smokeview"
+echo "If 'smokeview' still runs an older copy, run 'hash -r' or start a new shell."
 if [[ ":$PATH:" != *":$link_dir:"* ]]; then
   echo "Add $link_dir to PATH, or run $target/smokeview directly."
 fi
