@@ -17,8 +17,10 @@ common crop size; the colourbar, labels and time bar are removed.  Final names
 are human readable, for example
 `case Temperature X Slice 001 at 27.700m Clip Max.png`.
 
+From a source checkout, run:
+
 ```shell
-capture_result_slices.py path/to/case.smv
+python3 Utilities/Scripts/capture_result_slices.py /path/to/case.smv
 ```
 
 Images are written to `path/to/case_slice_captures`.  Use `-o DIR` to choose a
@@ -35,23 +37,47 @@ then checks this repository's build, the `SMV` environment variable, and
 `PATH`; older Smokeview releases do not contain the required `RENDERRESULTS`
 command.  Run `capture_result_slices.py --help` for all options.
 
-Users without a source checkout can receive a portable folder containing the
-matching custom Smokeview build and its resources:
+The Ashton installers include the script with its matching custom Smokeview
+build and resources:
 
 ```text
-ashton-smokeview-linux-x64/
+ashton-smokeview-v6.11.2-af1-linux-x64/
 |-- capture_result_slices.py
 |-- smokeview
 |-- smokeview.ini
-`-- objects.svo
+|-- objects.svo
+|-- colorbars/
+`-- textures/
 ```
 
 The launcher recognises `smokeview`, `smokeview_linux`, or `smokeview.exe`
-beside itself.  After installing Python and ImageMagick, a user can extract the
-folder and run `./capture_result_slices.py path/to/case.smv` without cloning or
-building the repository.  Each bundle must be built for the user's operating
-system and architecture, and should also include any required `colorbars/` and
-`textures/` directories.
+beside itself. After installing Python 3.10 or newer and ImageMagick, a user can
+run the packaged script without cloning or building the repository. Use
+`--no-crop` when ImageMagick is intentionally unavailable.
+
+The Ashton installers provide operating-system integrations for the matched
+capture utility. On Windows, right-click an `.smv` file and select **Capture
+result slices**. The equivalent PowerShell command is:
+
+```powershell
+$install = "$env:LOCALAPPDATA\Ashton Digital\Smokeview"
+& "$install\capture_result_slices.cmd" "C:\path\to\case.smv"
+```
+
+On Linux, use **Open With > Capture result slices**, or run:
+
+```shell
+ashton-capture-slices /path/to/case.smv
+```
+
+Normal `.smv` opening and automated capture are separate actions. Double-click
+an `.smv` file to open it interactively in Ashton Smokeview. The capture action
+passes the selected `.smv` path to the Python utility, which creates a temporary
+Smokeview script, starts a separate automated Smokeview process, renders the
+configured slices, then crops and renames the PNG files. An existing interactive
+Smokeview window can remain open while capture runs. The `.smv` file and its
+associated slice and data files are read from their existing locations and are
+not copied into the installation.
 
 ## slice2html.sh
 

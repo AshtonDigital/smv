@@ -1,10 +1,9 @@
 # Ashton Smokeview Internal Release Guide
 
 This document defines how the Ashton custom Smokeview fork is built, tested,
-versioned, packaged, and distributed internally.
-
-The current implementation is a pre-v1 development build. Do not distribute it
-as v1 until the release checklist in this document has been completed.
+versioned, packaged, and distributed internally. The current release line is
+based on Smokeview 6.11.2 and uses an Ashton suffix such as `af1`, producing the
+combined version `6.11.2-af1`.
 
 ## Current Customisation
 
@@ -57,11 +56,12 @@ git status --short --branch
 git pull --ff-only
 ```
 
-Use annotated tags for distributed versions:
+Use annotated tags for distributed versions. The tag must match the version
+reported by `smokeview -version` and printed in the installer filename:
 
 ```bash
-git tag -a ashton-smv-v1.0.0 -m "Ashton Smokeview v1.0.0"
-git push origin ashton-smv-v1.0.0
+git tag -a ashton-smv-v6.11.2-af1 -m "Ashton Smokeview 6.11.2-af1"
+git push origin ashton-smv-v6.11.2-af1
 ```
 
 Only tag a commit after its release package has passed the acceptance tests.
@@ -73,22 +73,24 @@ Smokeview root directory. For the portable internal package, the executable,
 `smokeview.ini`, and `objects.svo` must be placed in the same top-level
 directory.
 
-The current development configuration was obtained from:
+The approved company-default configuration is maintained at:
 
 ```text
 /home/tomcox/SharedFolder/VMLinux/smokeview.ini
 ```
 
-That file is a complete saved Smokeview configuration, not just a colourbar
-definition file. Before v1, create and review a curated release INI containing:
+`Build/for_bundle/smokeview.ini` is the version-controlled release snapshot of
+that file and is packaged on both platforms. The company default is a complete
+saved Smokeview configuration, not just a colourbar definition file. Review
+changes to it for:
 
 - the standard Smokeview defaults required by the team;
-- the four approved custom `GCOLORBAR` definitions;
+- the five approved company `GCOLORBAR` definitions;
 - the approved `V2_SLICE` bounds;
 - any required `RESULTWORKFLOW` overrides.
 
-Avoid shipping case-specific camera, input-file, clipping, or display state as
-global defaults unless the team has explicitly approved those settings.
+Only ship case-specific camera, input-file, clipping, or display state when the
+team has explicitly approved those settings as part of the company default.
 
 ## Development Build
 
@@ -130,18 +132,18 @@ root. To match the official Smokeview distribution format, Linux produces a
 self-extracting `.sh` installer and Windows produces an NSIS `.exe` installer.
 
 ```bash
-scripts/package_release_linux.sh \
-  --version 1.0.0 \
-  --config path/to/curated/smokeview.ini
+./scripts/package_release_linux.sh
 ```
 
 From an x64 Visual Studio Developer PowerShell on Windows:
 
 ```powershell
-scripts\package_release_windows.ps1 `
-  -Version 1.0.0 `
-  -ConfigFile path\to\curated\smokeview.ini
+.\scripts\package_release_windows.ps1
 ```
+
+Both scripts use `Build/for_bundle/smokeview.ini`, the committed snapshot of
+the company default. Use `--config` or `-ConfigFile` only to test an explicitly
+selected alternative configuration.
 
 Both scripts put the installer and a SHA-256 checksum in `dist/`. They accept
 `--help`/`Get-Help`-style parameter discovery and can package an existing build
@@ -150,26 +152,44 @@ runtime so that installing the Visual C++ Redistributable is not a prerequisite.
 Creating the Windows installer also requires NSIS 3 and its `makensis.exe`
 compiler.
 
+The release version combines the upstream Smokeview version with the Ashton
+fork release, for example `6.11.2-af1`. Increment `ASHTON_RELEASE` in the root
+`CMakeLists.txt` (`af2`, `af3`, and so on) before creating the next release.
+The packaging scripts derive the version automatically and reject an installer
+whose package version does not match the revision embedded in its executable.
+
+Both installers include `capture_result_slices.py` beside the Smokeview
+executable. This keeps the capture utility matched to the custom build and lets
+it discover the installed executable without a `--smokeview` argument. End
+users still need Python 3.10 or newer and, unless they use `--no-crop`,
+ImageMagick.
+
+On Windows, the installer adds **Capture result slices** to the `.smv` file
+context menu. On Linux, it installs the `ashton-smokeview` and
+`ashton-capture-slices` commands and registers **Capture result slices** as an
+`.smv` application under **Open With**. These actions start a separate automated
+Smokeview process; an existing interactive window can remain open.
+
 The manual commands below document the underlying Linux process and remain
 useful for troubleshooting.
 
 ```bash
-rm -rf cbuild/release
+rm -rf cbuild/release-linux
 
-cmake -S . -B cbuild/release \
+cmake -S . -B cbuild/release-linux \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=OFF \
   -DVENDORED_UI_LIBS=ON \
   -DVENDORED_LIBS=OFF
 
-cmake --build cbuild/release --target smokeview -j4
+cmake --build cbuild/release-linux --target smokeview -j4
 ```
 
 Inspect the resulting binary before packaging:
 
 ```bash
-ldd cbuild/release/smokeview
-readelf -d cbuild/release/smokeview | grep -E 'RPATH|RUNPATH' || true
+ldd cbuild/release-linux/smokeview
+readelf -d cbuild/release-linux/smokeview | grep -E 'RPATH|RUNPATH' || true
 ```
 
 The output must not contain paths under a developer's home directory or source
@@ -179,11 +199,13 @@ and test the package on every supported Linux image.
 
 ## Package Layout
 
-The v1 Linux installer should embed this payload layout:
+The Linux and Windows installers contain equivalent application resources.
+The Linux payload has this layout:
 
 ```text
-ashton-smokeview-v1.0.0-linux-x64/
+ashton-smokeview-v6.11.2-af1-linux-x64/
 |-- smokeview
+|-- capture_result_slices.py
 |-- smokeview.ini
 |-- objects.svo
 |-- colorbars/
@@ -192,20 +214,25 @@ ashton-smokeview-v1.0.0-linux-x64/
 `-- VERSION
 ```
 
-`VERSION` should contain the release version, Git commit, build date, platform,
-and compiler. `README.txt` should contain the launch command, supported platform,
-shortcut summary, configuration location, and internal support contact.
+The Windows payload uses `smokeview.exe` and also includes
+`capture_result_slices.cmd`, which provides dependency checking and invokes the
+Python capture utility. `VERSION` contains the release version, Git commit,
+build date, platform and compiler. `README.txt` contains the launch and capture
+commands, dependency notes, configuration location and support information.
 
-Assemble the staging directory only after the curated release INI exists:
+The packaging scripts assemble these payloads automatically. The equivalent
+manual Linux staging commands are useful only for troubleshooting:
 
 ```bash
-version=v1.0.0
-package="dist/ashton-smokeview-${version}-linux-x64"
+version=6.11.2-af1
+package="dist/ashton-smokeview-v${version}-linux-x64"
 
 rm -rf "$package"
 mkdir -p "$package"
-install -m 0755 cbuild/release/smokeview "$package/smokeview"
-install -m 0644 path/to/curated/smokeview.ini "$package/smokeview.ini"
+install -m 0755 cbuild/release-linux/smokeview "$package/smokeview"
+install -m 0755 Utilities/Scripts/capture_result_slices.py \
+  "$package/capture_result_slices.py"
+install -m 0644 Build/for_bundle/smokeview.ini "$package/smokeview.ini"
 install -m 0644 Build/for_bundle/objects.svo "$package/objects.svo"
 cp -R Build/for_bundle/colorbars "$package/colorbars"
 cp -R Build/for_bundle/textures "$package/textures"
@@ -225,7 +252,7 @@ payload after its installer shell code, and checksums the resulting `.sh` file.
 Use one representative case that contains all required scalar quantities and
 X, Y, and Z slice planes. Record the case name and test result with the release.
 
-Verify all of the following before v1:
+Verify all of the following before distributing a release:
 
 - Smokeview starts from the installed package without access to the source tree.
 - Startup output reports the package directory as `Root directory`.
@@ -242,6 +269,16 @@ Verify all of the following before v1:
 - Advancing to `off` restores the previous camera and clipping state.
 - The installer passes testing on a second machine that has no source checkout.
 - The published `.sha256` file validates the installer.
+- The installed capture utility reports Python, Smokeview and ImageMagick
+  dependencies clearly before rendering.
+- The capture utility renders, crops and renames all configured result slices.
+- Capture can run in a separate automated process while an interactive
+  Smokeview window remains open.
+- On Windows, double-clicking an `.smv` file opens Ashton Smokeview and the
+  **Capture result slices** File Explorer context action works.
+- On Linux, `ashton-smokeview` and `ashton-capture-slices` are available, an
+  `.smv` file opens in Ashton Smokeview by default, and **Open With > Capture
+  result slices** works in the desktop file manager.
 
 ## Publishing Internally
 
@@ -257,27 +294,26 @@ installers available so a team can roll back to the preceding known-good version
 Linux recipients should make the downloaded installer executable and run it:
 
 ```bash
-chmod +x ashton-smokeview-v1.0.0-linux-x64.sh
-./ashton-smokeview-v1.0.0-linux-x64.sh
+chmod +x ashton-smokeview-v6.11.2-af1-linux-x64.sh
+./ashton-smokeview-v6.11.2-af1-linux-x64.sh
 ```
 
 Windows recipients run the `.exe` installer normally. The Linux installer cannot
 be used natively on Windows; each platform needs its own build and acceptance-test
 pass.
 
-## Deferred Work Before v1
+## Remaining Release Work
 
-The following items remain open for the v1 release cycle:
+The following items still require a team decision or release-specific action:
 
-- finish and approve any additional shortcut behaviour;
-- obtain a permanent representative regression-test case;
-- curate and commit or securely store the release `smokeview.ini`;
-- decide the supported Linux distribution and minimum library versions;
+- approve any additional shortcut behaviour;
+- select and retain a representative regression-test case;
+- decide the supported Linux distributions and minimum library versions;
 - decide whether a separate velocity-vector workflow is required;
-- add automated workflow scripting and batch screenshots if included in v1;
-- write user-facing release notes and the package `README.txt`;
-- perform clean-machine acceptance testing;
-- select the final v1 commit, build it, test it, and then create the tag.
+- write release notes for each distributed Ashton version;
+- perform clean-machine acceptance testing on both platforms;
+- select the final commit, build both installers, test them, then create the
+  matching annotated tag.
 
 Update this document whenever the shortcut contract, configuration format,
 supported platforms, packaging layout, or release process changes.

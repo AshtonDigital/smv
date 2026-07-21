@@ -87,7 +87,11 @@ build_dir="$(absolute_from_root "$build_dir")"
 output_dir="$(absolute_from_root "$output_dir")"
 
 if [[ -z "$version" ]]; then
-  version="$(sed -nE 's/.*project\(smv .*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$repo_root/CMakeLists.txt" | head -n 1)"
+  upstream_version="$(sed -nE 's/.*project\(smv .*VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' "$repo_root/CMakeLists.txt" | head -n 1)"
+  ashton_release="$(sed -nE 's/.*set\(ASHTON_RELEASE "([^"]+)"\).*/\1/p' "$repo_root/CMakeLists.txt" | head -n 1)"
+  [[ -n "$upstream_version" ]] || fail "could not determine the upstream Smokeview version from CMakeLists.txt"
+  [[ -n "$ashton_release" ]] || fail "could not determine the Ashton release from CMakeLists.txt"
+  version="${upstream_version}-${ashton_release}"
 fi
 version="${version#v}"
 [[ "$version" =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]] || fail "invalid version: $version"
@@ -95,6 +99,7 @@ version="${version#v}"
 [[ -f "$config_file" ]] || fail "configuration file not found: $config_file"
 [[ -f "$repo_root/Build/for_bundle/.smokeview_bin" ]] || fail ".smokeview_bin is missing"
 [[ -f "$repo_root/Build/for_bundle/objects.svo" ]] || fail "objects.svo is missing"
+[[ -f "$repo_root/Utilities/Scripts/capture_result_slices.py" ]] || fail "capture_result_slices.py is missing"
 [[ -d "$repo_root/Build/for_bundle/colorbars" ]] || fail "colorbars directory is missing"
 [[ -d "$repo_root/Build/for_bundle/textures" ]] || fail "textures directory is missing"
 
@@ -109,6 +114,12 @@ fi
 
 binary="$build_dir/smokeview"
 [[ -x "$binary" ]] || fail "release executable not found: $binary"
+
+binary_version="$("$binary" -version 2>&1 | sed -nE 's/^Revision[[:space:]]*:[[:space:]]*//p' | head -n 1)"
+[[ -n "$binary_version" ]] || fail "could not read the revision from the release executable"
+if [[ "$binary_version" != "$version" ]]; then
+  fail "package version $version does not match executable revision $binary_version; rebuild after updating ASHTON_RELEASE in CMakeLists.txt"
+fi
 
 if ldd "$binary" | grep -q 'not found'; then
   ldd "$binary" >&2
@@ -137,6 +148,7 @@ package_dir="$stage_root/$package_name"
 mkdir -p "$package_dir"
 
 install -m 0755 "$binary" "$package_dir/smokeview"
+install -m 0755 "$repo_root/Utilities/Scripts/capture_result_slices.py" "$package_dir/capture_result_slices.py"
 install -m 0644 "$config_file" "$package_dir/smokeview.ini"
 install -m 0644 "$repo_root/Build/for_bundle/.smokeview_bin" "$package_dir/.smokeview_bin"
 install -m 0644 "$repo_root/Build/for_bundle/objects.svo" "$package_dir/objects.svo"
@@ -168,7 +180,22 @@ Keep this directory together. Run Smokeview with an absolute path to a case:
 
   ./smokeview /absolute/path/to/case.smv
 
+Capture every configured result-review slice with:
+
+  ./capture_result_slices.py /absolute/path/to/case.smv --overwrite
+
+After installation, the equivalent commands are:
+
+  ashton-smokeview /absolute/path/to/case.smv
+  ashton-capture-slices /absolute/path/to/case.smv
+
+Desktop users can right-click an .smv file and choose
+Open With > Capture result slices.
+
 The packaged smokeview.ini and objects.svo files are loaded from this directory.
+The capture utility requires Python 3.10 or newer and, unless --no-crop is used,
+ImageMagick. It launches a separate automated Smokeview process, so an
+interactive Smokeview window may remain open while capture runs.
 Contact the Ashton Digital internal support channel for help with this build.
 EOF
 
@@ -275,11 +302,77 @@ chmod 0755 "$target/smokeview"
 
 link_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
 mkdir -p "$link_dir"
-ln -sfn "$target/smokeview" "$link_dir/smokeview"
+ln -sfn "$target/smokeview" "$link_dir/ashton-smokeview"
+ln -sfn "$target/capture_result_slices.py" "$link_dir/ashton-capture-slices"
+
+generic_launcher="$link_dir/smokeview"
+if [[ ! -e "$generic_launcher" && ! -L "$generic_launcher" ]]; then
+  ln -s "$target/smokeview" "$generic_launcher"
+elif [[ -L "$generic_launcher" && "$(readlink "$generic_launcher")" == *"/ashton-smokeview-v"* ]]; then
+  ln -sfn "$target/smokeview" "$generic_launcher"
+else
+  echo "Existing launcher was not replaced: $generic_launcher"
+fi
+
+data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+applications_dir="$data_home/applications"
+mime_dir="$data_home/mime"
+mkdir -p "$applications_dir" "$mime_dir/packages" "$config_home"
+
+cat > "$mime_dir/packages/ashton-smokeview.xml" <<'MIME_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-ashton-smokeview">
+    <comment>Smokeview case</comment>
+    <glob pattern="*.smv"/>
+  </mime-type>
+</mime-info>
+MIME_EOF
+
+cat > "$applications_dir/ashton-smokeview.desktop" <<DESKTOP_EOF
+[Desktop Entry]
+Type=Application
+Name=Ashton Smokeview
+Comment=Open a Smokeview case
+Exec="$link_dir/ashton-smokeview" %f
+Icon=applications-graphics
+Terminal=false
+MimeType=application/x-ashton-smokeview;
+DESKTOP_EOF
+
+cat > "$applications_dir/ashton-capture-slices.desktop" <<DESKTOP_EOF
+[Desktop Entry]
+Type=Application
+Name=Capture result slices
+Comment=Capture configured result-review slices with Ashton Smokeview
+Exec="$link_dir/ashton-capture-slices" %f --overwrite
+Icon=camera-photo
+Terminal=true
+NoDisplay=true
+MimeType=application/x-ashton-smokeview;
+DESKTOP_EOF
+
+if command -v update-mime-database >/dev/null 2>&1; then
+  update-mime-database "$mime_dir" >/dev/null 2>&1 || echo "Warning: could not update the MIME database."
+fi
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database "$applications_dir" >/dev/null 2>&1 || echo "Warning: could not update the desktop application database."
+fi
+if command -v xdg-mime >/dev/null 2>&1; then
+  xdg-mime default ashton-smokeview.desktop application/x-ashton-smokeview >/dev/null 2>&1 || \
+    echo "Warning: could not set Ashton Smokeview as the default .smv application."
+fi
 
 echo
 echo "Installed Ashton Smokeview in $target"
-echo "Launcher: $link_dir/smokeview"
+echo "Smokeview launcher: $link_dir/ashton-smokeview"
+echo "Capture launcher: $link_dir/ashton-capture-slices"
+echo "Run now: $link_dir/ashton-smokeview"
+echo "To capture: $link_dir/ashton-capture-slices /path/to/case.smv"
+echo "Desktop integration: right-click an .smv file and choose Open With -> Capture result slices."
+echo "If 'smokeview' still runs an older copy, run 'type -a smokeview'."
+echo "Remove any old alias, or run 'hash -r' if the old path was cached."
 if [[ ":$PATH:" != *":$link_dir:"* ]]; then
   echo "Add $link_dir to PATH, or run $target/smokeview directly."
 fi

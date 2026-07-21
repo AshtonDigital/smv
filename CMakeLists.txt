@@ -16,7 +16,9 @@ include(FetchContent)
 if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
-project(smv LANGUAGES C CXX VERSION 1.17.0)
+project(smv LANGUAGES C CXX VERSION 6.11.2)
+set(ASHTON_RELEASE "af1")
+set(ASHTON_VERSION "${PROJECT_VERSION}-${ASHTON_RELEASE}")
 # Use C99
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -26,7 +28,7 @@ set(CMAKE_C_STANDARD_REQUIRED TRUE)
 # GNUInstallDirs is used to set the appropriate paths for install artefacts.
 # Despite the name it's still useful on Windows.
 include(GNUInstallDirs)
-add_compile_definitions(pp_GITHASH="${PROJECT_VERSION}+sc2")
+add_compile_definitions(pp_GITHASH="${ASHTON_VERSION}")
 
 include(InstallRequiredSystemLibraries)
 configure_file(LICENSE.md LICENSE.txt)
@@ -45,7 +47,6 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
 set(CPACK_WIX_PRODUCT_ICON "${CMAKE_CURRENT_SOURCE_DIR}/Build/for_bundle/icon.ico")
 set(CPACK_WIX_PATCH_FILE "${CMAKE_CURRENT_SOURCE_DIR}/cpack_patch.xml")
 include(CPack)
-message("Package Name: ${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CPACK_SYSTEM_NAME}.msi")
 
 # Options which can be configured (along with their defaults)
 option(BETA "Include beta functionality" OFF)

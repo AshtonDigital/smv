@@ -90,14 +90,22 @@ $BuildDir = Get-RepoPath $BuildDir
 $OutputDir = Get-RepoPath $OutputDir
 
 if (-not $Version) {
-    $ProjectDeclaration = Select-String `
-        -Path (Join-Path $RepoRoot "CMakeLists.txt") `
-        -Pattern 'project\(smv .*VERSION ([0-9]+\.[0-9]+\.[0-9]+)' |
-        Select-Object -First 1
-    if (-not $ProjectDeclaration) {
-        throw "Could not determine the version from CMakeLists.txt."
+    $CMakeContents = Get-Content -LiteralPath (Join-Path $RepoRoot "CMakeLists.txt") -Raw
+    $ProjectDeclaration = [regex]::Match(
+        $CMakeContents,
+        'project\(smv .*VERSION ([0-9]+\.[0-9]+\.[0-9]+)'
+    )
+    $AshtonDeclaration = [regex]::Match(
+        $CMakeContents,
+        'set\(ASHTON_RELEASE\s+"([^"]+)"\)'
+    )
+    if (-not $ProjectDeclaration.Success) {
+        throw "Could not determine the upstream Smokeview version from CMakeLists.txt."
     }
-    $Version = $ProjectDeclaration.Matches[0].Groups[1].Value
+    if (-not $AshtonDeclaration.Success) {
+        throw "Could not determine the Ashton release from CMakeLists.txt."
+    }
+    $Version = $ProjectDeclaration.Groups[1].Value + "-" + $AshtonDeclaration.Groups[1].Value
 }
 $Version = $Version.TrimStart("v")
 if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]*$') {
@@ -106,10 +114,18 @@ if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]*$') {
 
 $ObjectsFile = Join-Path $RepoRoot "Build/for_bundle/objects.svo"
 $RootMarkerFile = Join-Path $RepoRoot "Build/for_bundle/.smokeview_bin"
+$CaptureScript = Join-Path $RepoRoot "Utilities/Scripts/capture_result_slices.py"
 $ColorbarsDir = Join-Path $RepoRoot "Build/for_bundle/colorbars"
 $TexturesDir = Join-Path $RepoRoot "Build/for_bundle/textures"
 
-foreach ($RequiredPath in @($ConfigFile, $ObjectsFile, $RootMarkerFile, $ColorbarsDir, $TexturesDir)) {
+foreach ($RequiredPath in @(
+    $ConfigFile,
+    $ObjectsFile,
+    $RootMarkerFile,
+    $CaptureScript,
+    $ColorbarsDir,
+    $TexturesDir
+)) {
     if (-not (Test-Path -LiteralPath $RequiredPath)) {
         throw "Required package input is missing: $RequiredPath"
     }
@@ -146,6 +162,19 @@ if (-not $Binary) {
     throw "Release executable not found under $BuildDir."
 }
 
+$VersionOutput = (& $Binary "-version" 2>&1 | Out-String)
+if ($LASTEXITCODE -ne 0) {
+    throw "Could not read the revision from the release executable."
+}
+$BinaryVersionMatch = [regex]::Match($VersionOutput, '(?m)^Revision\s*:\s*(\S+)\s*$')
+if (-not $BinaryVersionMatch.Success) {
+    throw "Could not read the revision from the release executable."
+}
+$BinaryVersion = $BinaryVersionMatch.Groups[1].Value
+if ($BinaryVersion -ne $Version) {
+    throw "Package version $Version does not match executable revision $BinaryVersion; rebuild after updating ASHTON_RELEASE in CMakeLists.txt."
+}
+
 $Architecture = "x64"
 $PackageName = "ashton-smokeview-v$Version-windows-$Architecture"
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
@@ -158,9 +187,52 @@ try {
     Copy-Item -LiteralPath $Binary -Destination (Join-Path $PackageDir "smokeview.exe")
     Copy-Item -LiteralPath $ConfigFile -Destination (Join-Path $PackageDir "smokeview.ini")
     Copy-Item -LiteralPath $RootMarkerFile -Destination (Join-Path $PackageDir ".smokeview_bin")
+    Copy-Item -LiteralPath $CaptureScript -Destination (Join-Path $PackageDir "capture_result_slices.py")
     Copy-Item -LiteralPath $ObjectsFile -Destination (Join-Path $PackageDir "objects.svo")
     Copy-Item -LiteralPath $ColorbarsDir -Destination (Join-Path $PackageDir "colorbars") -Recurse
     Copy-Item -LiteralPath $TexturesDir -Destination (Join-Path $PackageDir "textures") -Recurse
+
+    @'
+@echo off
+setlocal
+
+if "%~1"=="" (
+    echo Usage: capture_result_slices.cmd C:\path\to\case.smv
+    echo.
+    echo You can also right-click an .smv file and select "Capture result slices".
+    pause
+    exit /b 2
+)
+
+set "CASE_FILE=%~f1"
+if not exist "%CASE_FILE%" (
+    echo Error: Smokeview case not found: %CASE_FILE%
+    pause
+    exit /b 2
+)
+
+where py.exe >nul 2>&1
+if not errorlevel 1 (
+    py -3 "%~dp0capture_result_slices.py" "%CASE_FILE%" --smokeview "%~dp0smokeview.exe" --overwrite
+) else (
+    where python.exe >nul 2>&1
+    if errorlevel 1 (
+        echo Error: Python 3.10 or newer was not found.
+        echo Install Python from https://www.python.org/downloads/windows/
+        pause
+        exit /b 2
+    )
+    python "%~dp0capture_result_slices.py" "%CASE_FILE%" --smokeview "%~dp0smokeview.exe" --overwrite
+)
+
+if errorlevel 1 (
+    echo.
+    echo Capture failed. Review the messages above.
+    pause
+    exit /b 1
+)
+endlocal
+'@ | Set-Content -LiteralPath (Join-Path $PackageDir "capture_result_slices.cmd") -Encoding ASCII
 
     $Commit = (& git -C $RepoRoot rev-parse --short=12 HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { $Commit = "unknown" }
@@ -185,6 +257,26 @@ Keep this directory together. Run Smokeview with an absolute path to a case:
   .\smokeview.exe C:\absolute\path\to\case.smv
 
 The packaged smokeview.ini and objects.svo files are loaded from this directory.
+
+Capture every configured result-review slice with:
+
+  .\capture_result_slices.cmd C:\absolute\path\to\case.smv
+
+Alternatively, right-click an .smv file in File Explorer and select:
+
+  Capture result slices
+
+This starts a separate automated Smokeview process. An interactive Smokeview
+window may remain open while capture runs.
+
+The capture utility requires Python 3.10 or newer. Model cropping requires
+ImageMagick; install it from PowerShell with:
+
+  winget install --id ImageMagick.Q16 -e --source winget
+
+Use --no-crop if ImageMagick is intentionally unavailable. The case's associated
+slice and data files must remain beside the .smv file.
+
 Contact the Ashton Digital internal support channel for help with this build.
 "@ | Set-Content -LiteralPath (Join-Path $PackageDir "README.txt") -Encoding UTF8
 
@@ -233,6 +325,11 @@ Section "Smokeview" SEC_SMOKEVIEW
     WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\DefaultIcon" "" "$INSTDIR\smokeview.exe,0"
     WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\shell\open\command" "" '"$INSTDIR\smokeview.exe" "%1"'
 
+    WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\shell\capture" "" "Capture result slices"
+    WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\shell\capture" "Icon" "$INSTDIR\smokeview.exe,0"
+    WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\shell\capture\command" "" '"$INSTDIR\capture_result_slices.cmd" "%1"'
+    System::Call 'shell32.dll::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
+
     CreateDirectory "$SMPROGRAMS\Ashton Digital"
     CreateShortcut "$SMPROGRAMS\Ashton Digital\Smokeview.lnk" "$INSTDIR\smokeview.exe"
     WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -243,6 +340,7 @@ Section "Uninstall"
     Delete "$SMPROGRAMS\Ashton Digital\Smokeview.lnk"
     RMDir "$SMPROGRAMS\Ashton Digital"
     DeleteRegKey HKCU "Software\Classes\AshtonSmokeview.smv"
+    System::Call 'shell32.dll::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AshtonSmokeview"
     DeleteRegKey HKCU "Software\Ashton Digital\Smokeview"
     RMDir /r "$INSTDIR"
