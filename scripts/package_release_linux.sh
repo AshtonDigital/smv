@@ -291,7 +291,8 @@ echo
 echo "Installed Ashton Smokeview in $target"
 echo "Launcher: $link_dir/smokeview"
 echo "Run now: $link_dir/smokeview"
-echo "If 'smokeview' still runs an older copy, run 'hash -r' or start a new shell."
+echo "If 'smokeview' still runs an older copy, run 'type -a smokeview'."
+echo "Remove any old alias, or run 'hash -r' if the old path was cached."
 if [[ ":$PATH:" != *":$link_dir:"* ]]; then
   echo "Add $link_dir to PATH, or run $target/smokeview directly."
 fi
