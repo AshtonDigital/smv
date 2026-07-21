@@ -1,3 +1,10 @@
+<#
+.SYNOPSIS
+Build Smokeview and create a Windows installer executable.
+
+.DESCRIPTION
+Requires Visual Studio 2022 with C++ build tools, CMake, and NSIS 3.
+#>
 [CmdletBinding()]
 param(
     [string]$Version,
@@ -37,6 +44,47 @@ function Invoke-NativeCommand {
     }
 }
 
+function Find-CMakeCommand {
+    $Command = Get-Command cmake.exe -ErrorAction SilentlyContinue
+    if ($Command) { return $Command.Source }
+
+    $Candidates = @()
+    if ($env:ProgramFiles) {
+        $Candidates += Join-Path $env:ProgramFiles "CMake/bin/cmake.exe"
+    }
+
+    $VsWhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio/Installer/vswhere.exe"
+    if (Test-Path -LiteralPath $VsWhere) {
+        $VsPath = & $VsWhere -latest -products * -property installationPath
+        if ($VsPath) {
+            $Candidates += Join-Path $VsPath "Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe"
+        }
+    }
+
+    $Result = $Candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if ($Result) { return $Result }
+
+    throw "CMake was not found. Install the Visual Studio 'C++ CMake tools for Windows' component, then reopen PowerShell."
+}
+
+function Find-MakeNSISCommand {
+    $Command = Get-Command makensis.exe -ErrorAction SilentlyContinue
+    if ($Command) { return $Command.Source }
+
+    $Candidates = @()
+    if (${env:ProgramFiles(x86)}) {
+        $Candidates += Join-Path ${env:ProgramFiles(x86)} "NSIS/makensis.exe"
+    }
+    if ($env:ProgramFiles) {
+        $Candidates += Join-Path $env:ProgramFiles "NSIS/makensis.exe"
+    }
+
+    $Result = $Candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+    if ($Result) { return $Result }
+
+    throw "NSIS was not found. Install NSIS 3 from https://nsis.sourceforge.io, then reopen PowerShell."
+}
+
 $ConfigFile = Get-RepoPath $ConfigFile
 $BuildDir = Get-RepoPath $BuildDir
 $OutputDir = Get-RepoPath $OutputDir
@@ -57,17 +105,22 @@ if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]*$') {
 }
 
 $ObjectsFile = Join-Path $RepoRoot "Build/for_bundle/objects.svo"
+$RootMarkerFile = Join-Path $RepoRoot "Build/for_bundle/.smokeview_bin"
 $ColorbarsDir = Join-Path $RepoRoot "Build/for_bundle/colorbars"
 $TexturesDir = Join-Path $RepoRoot "Build/for_bundle/textures"
 
-foreach ($RequiredPath in @($ConfigFile, $ObjectsFile, $ColorbarsDir, $TexturesDir)) {
+foreach ($RequiredPath in @($ConfigFile, $ObjectsFile, $RootMarkerFile, $ColorbarsDir, $TexturesDir)) {
     if (-not (Test-Path -LiteralPath $RequiredPath)) {
         throw "Required package input is missing: $RequiredPath"
     }
 }
 
 if (-not $SkipBuild) {
-    Invoke-NativeCommand -Command cmake -Arguments @(
+    $CMakeCommand = Find-CMakeCommand
+}
+$MakeNSISCommand = Find-MakeNSISCommand
+if (-not $SkipBuild) {
+    Invoke-NativeCommand -Command $CMakeCommand -Arguments @(
         "-S", $RepoRoot,
         "-B", $BuildDir,
         "-A", "x64",
@@ -76,7 +129,7 @@ if (-not $SkipBuild) {
         "-DVENDORED_UI_LIBS=ON",
         "-DVENDORED_LIBS=ON"
     )
-    Invoke-NativeCommand -Command cmake -Arguments @(
+    Invoke-NativeCommand -Command $CMakeCommand -Arguments @(
         "--build", $BuildDir,
         "--config", "Release",
         "--target", "smokeview",
@@ -104,6 +157,7 @@ try {
     New-Item -ItemType Directory -Force -Path $PackageDir | Out-Null
     Copy-Item -LiteralPath $Binary -Destination (Join-Path $PackageDir "smokeview.exe")
     Copy-Item -LiteralPath $ConfigFile -Destination (Join-Path $PackageDir "smokeview.ini")
+    Copy-Item -LiteralPath $RootMarkerFile -Destination (Join-Path $PackageDir ".smokeview_bin")
     Copy-Item -LiteralPath $ObjectsFile -Destination (Join-Path $PackageDir "objects.svo")
     Copy-Item -LiteralPath $ColorbarsDir -Destination (Join-Path $PackageDir "colorbars") -Recurse
     Copy-Item -LiteralPath $TexturesDir -Destination (Join-Path $PackageDir "textures") -Recurse
@@ -134,18 +188,78 @@ The packaged smokeview.ini and objects.svo files are loaded from this directory.
 Contact the Ashton Digital internal support channel for help with this build.
 "@ | Set-Content -LiteralPath (Join-Path $PackageDir "README.txt") -Encoding UTF8
 
-    $ArchivePath = Join-Path $OutputDir "$PackageName.zip"
-    $ChecksumPath = "$ArchivePath.sha256"
-    if (Test-Path -LiteralPath $ArchivePath) {
-        Remove-Item -LiteralPath $ArchivePath -Force
+    $InstallerPath = Join-Path $OutputDir "$PackageName.exe"
+    $ChecksumPath = "$InstallerPath.sha256"
+    if (Test-Path -LiteralPath $InstallerPath) {
+        Remove-Item -LiteralPath $InstallerPath -Force
     }
-    Compress-Archive -LiteralPath $PackageDir -DestinationPath $ArchivePath -CompressionLevel Optimal
 
-    $Hash = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-    "$Hash  $([IO.Path]::GetFileName($ArchivePath))" |
+    $NsiPath = Join-Path $StageRoot "installer.nsi"
+    $IconPath = Join-Path $RepoRoot "Build/for_bundle/icon.ico"
+    $NsiTemplate = @'
+Unicode True
+!include "MUI2.nsh"
+
+Name "Ashton Smokeview v@VERSION@"
+OutFile "@OUTPUT@"
+InstallDir "$LOCALAPPDATA\Ashton Digital\Smokeview"
+InstallDirRegKey HKCU "Software\Ashton Digital\Smokeview" "InstallDir"
+RequestExecutionLevel user
+Icon "@ICON@"
+UninstallIcon "@ICON@"
+
+!define MUI_ABORTWARNING
+!insertmacro MUI_PAGE_WELCOME
+!insertmacro MUI_PAGE_DIRECTORY
+!insertmacro MUI_PAGE_INSTFILES
+!insertmacro MUI_PAGE_FINISH
+!insertmacro MUI_UNPAGE_CONFIRM
+!insertmacro MUI_UNPAGE_INSTFILES
+!insertmacro MUI_LANGUAGE "English"
+
+Section "Smokeview" SEC_SMOKEVIEW
+    SetShellVarContext current
+    SetOutPath "$INSTDIR"
+    File /r "@PACKAGE@\*"
+
+    WriteRegStr HKCU "Software\Ashton Digital\Smokeview" "InstallDir" "$INSTDIR"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AshtonSmokeview" "DisplayName" "Ashton Smokeview"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AshtonSmokeview" "DisplayVersion" "@VERSION@"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AshtonSmokeview" "DisplayIcon" "$INSTDIR\smokeview.exe"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AshtonSmokeview" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+
+    WriteRegStr HKCU "Software\Classes\.smv" "" "AshtonSmokeview.smv"
+    WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv" "" "Smokeview case"
+    WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\DefaultIcon" "" "$INSTDIR\smokeview.exe,0"
+    WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\shell\open\command" "" '"$INSTDIR\smokeview.exe" "%1"'
+
+    CreateDirectory "$SMPROGRAMS\Ashton Digital"
+    CreateShortcut "$SMPROGRAMS\Ashton Digital\Smokeview.lnk" "$INSTDIR\smokeview.exe"
+    WriteUninstaller "$INSTDIR\Uninstall.exe"
+SectionEnd
+
+Section "Uninstall"
+    SetShellVarContext current
+    Delete "$SMPROGRAMS\Ashton Digital\Smokeview.lnk"
+    RMDir "$SMPROGRAMS\Ashton Digital"
+    DeleteRegKey HKCU "Software\Classes\AshtonSmokeview.smv"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AshtonSmokeview"
+    DeleteRegKey HKCU "Software\Ashton Digital\Smokeview"
+    RMDir /r "$INSTDIR"
+SectionEnd
+'@
+    $NsiContents = $NsiTemplate.Replace("@VERSION@", $Version)
+    $NsiContents = $NsiContents.Replace("@OUTPUT@", $InstallerPath)
+    $NsiContents = $NsiContents.Replace("@ICON@", $IconPath)
+    $NsiContents = $NsiContents.Replace("@PACKAGE@", $PackageDir)
+    $NsiContents | Set-Content -LiteralPath $NsiPath -Encoding UTF8
+    Invoke-NativeCommand -Command $MakeNSISCommand -Arguments @($NsiPath)
+
+    $Hash = (Get-FileHash -LiteralPath $InstallerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    "$Hash  $([IO.Path]::GetFileName($InstallerPath))" |
         Set-Content -LiteralPath $ChecksumPath -Encoding ASCII
 
-    Write-Host "Created $ArchivePath"
+    Write-Host "Created $InstallerPath"
     Write-Host "Created $ChecksumPath"
 }
 finally {

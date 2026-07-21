@@ -126,9 +126,8 @@ This prevents the package from referring to a library inside the developer's
 checkout.
 
 For normal releases, use the platform packaging scripts from the repository
-root. Linux produces a standard portable `tar.gz` archive; Windows produces a
-portable ZIP. A self-extracting Linux `.sh` is intentionally not used because it
-would require recipients to execute the archive before inspecting its contents.
+root. To match the official Smokeview distribution format, Linux produces a
+self-extracting `.sh` installer and Windows produces an NSIS `.exe` installer.
 
 ```bash
 scripts/package_release_linux.sh \
@@ -144,10 +143,12 @@ scripts\package_release_windows.ps1 `
   -ConfigFile path\to\curated\smokeview.ini
 ```
 
-Both scripts put the archive and a SHA-256 checksum in `dist/`. They accept
+Both scripts put the installer and a SHA-256 checksum in `dist/`. They accept
 `--help`/`Get-Help`-style parameter discovery and can package an existing build
 with `--skip-build`/`-SkipBuild`. The Windows package uses the static MSVC
 runtime so that installing the Visual C++ Redistributable is not a prerequisite.
+Creating the Windows installer also requires NSIS 3 and its `makensis.exe`
+compiler.
 
 The manual commands below document the underlying Linux process and remain
 useful for troubleshooting.
@@ -178,7 +179,7 @@ and test the package on every supported Linux image.
 
 ## Package Layout
 
-The v1 Linux archive should use this layout:
+The v1 Linux installer should embed this payload layout:
 
 ```text
 ashton-smokeview-v1.0.0-linux-x64/
@@ -210,12 +211,14 @@ cp -R Build/for_bundle/colorbars "$package/colorbars"
 cp -R Build/for_bundle/textures "$package/textures"
 ```
 
-Create the archive and checksum:
+For troubleshooting, create the payload archive directly with:
 
 ```bash
 tar -C dist -czf "${package}.tar.gz" "$(basename "$package")"
-sha256sum "${package}.tar.gz" > "${package}.tar.gz.sha256"
 ```
+
+The release script performs this staging automatically, embeds the compressed
+payload after its installer shell code, and checksums the resulting `.sh` file.
 
 ## Acceptance Testing
 
@@ -224,7 +227,7 @@ X, Y, and Z slice planes. Record the case name and test result with the release.
 
 Verify all of the following before v1:
 
-- Smokeview starts from the extracted package without access to the source tree.
+- Smokeview starts from the installed package without access to the source tree.
 - Startup output reports the package directory as `Root directory`.
 - Startup output reports the packaged `smokeview.ini` and `objects.svo`.
 - Existing important shortcuts still work: `O`, `Alt+V`, `Alt+B`, `Alt+C`,
@@ -237,28 +240,30 @@ Verify all of the following before v1:
 - X and Y slices use the expected side view; Z slices use the top-down view.
 - The fitted zoom shows the complete domain and normal zoom controls remain usable.
 - Advancing to `off` restores the previous camera and clipping state.
-- The archive passes testing on a second machine that has no source checkout.
-- `sha256sum -c` validates the published archive.
+- The installer passes testing on a second machine that has no source checkout.
+- The published `.sha256` file validates the installer.
 
 ## Publishing Internally
 
-Publish both the archive and its `.sha256` file using one controlled location:
+Publish both the installer and its `.sha256` file using one controlled location:
 
 - a release attached to the internal Ashton GitHub repository; or
 - a versioned folder in the company SharedFolder; or
 - the company's managed internal software repository.
 
-Do not distribute an unversioned executable over an existing release. Keep old
-archives available so a team can roll back to the preceding known-good version.
+Do not distribute an unversioned installer over an existing release. Keep old
+installers available so a team can roll back to the preceding known-good version.
 
-Recipients should extract the complete directory and run:
+Linux recipients should make the downloaded installer executable and run it:
 
 ```bash
-./smokeview /absolute/path/to/case.smv
+chmod +x ashton-smokeview-v1.0.0-linux-x64.sh
+./ashton-smokeview-v1.0.0-linux-x64.sh
 ```
 
-The Linux archive cannot be used natively on Windows. A Windows release needs a
-separate Windows build, package, and acceptance-test pass.
+Windows recipients run the `.exe` installer normally. The Linux installer cannot
+be used natively on Windows; each platform needs its own build and acceptance-test
+pass.
 
 ## Deferred Work Before v1
 

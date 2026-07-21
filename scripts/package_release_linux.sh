@@ -4,7 +4,7 @@ set -Eeuo pipefail
 
 usage() {
   cat <<'EOF'
-Build and package Smokeview for Linux.
+Build Smokeview and create a self-extracting Linux installer.
 
 Usage:
   scripts/package_release_linux.sh [options]
@@ -93,6 +93,7 @@ version="${version#v}"
 [[ "$version" =~ ^[0-9A-Za-z][0-9A-Za-z._-]*$ ]] || fail "invalid version: $version"
 
 [[ -f "$config_file" ]] || fail "configuration file not found: $config_file"
+[[ -f "$repo_root/Build/for_bundle/.smokeview_bin" ]] || fail ".smokeview_bin is missing"
 [[ -f "$repo_root/Build/for_bundle/objects.svo" ]] || fail "objects.svo is missing"
 [[ -d "$repo_root/Build/for_bundle/colorbars" ]] || fail "colorbars directory is missing"
 [[ -d "$repo_root/Build/for_bundle/textures" ]] || fail "textures directory is missing"
@@ -137,6 +138,7 @@ mkdir -p "$package_dir"
 
 install -m 0755 "$binary" "$package_dir/smokeview"
 install -m 0644 "$config_file" "$package_dir/smokeview.ini"
+install -m 0644 "$repo_root/Build/for_bundle/.smokeview_bin" "$package_dir/.smokeview_bin"
 install -m 0644 "$repo_root/Build/for_bundle/objects.svo" "$package_dir/objects.svo"
 cp -R "$repo_root/Build/for_bundle/colorbars" "$package_dir/colorbars"
 cp -R "$repo_root/Build/for_bundle/textures" "$package_dir/textures"
@@ -170,13 +172,128 @@ The packaged smokeview.ini and objects.svo files are loaded from this directory.
 Contact the Ashton Digital internal support channel for help with this build.
 EOF
 
-archive_path="$output_dir/$package_name.tar.gz"
-checksum_path="$archive_path.sha256"
-tar -C "$stage_root" -czf "$archive_path" "$package_name"
+payload_path="$stage_root/$package_name.tar.gz"
+installer_path="$output_dir/$package_name.sh"
+checksum_path="$installer_path.sha256"
+tar -C "$stage_root" -czf "$payload_path" "$package_name"
+
+cat > "$installer_path" <<EOF
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+package_name='$package_name'
+version='$version'
+EOF
+
+cat >> "$installer_path" <<'EOF'
+
+usage() {
+  cat <<USAGE
+Install Ashton Smokeview ${version} for Linux.
+
+Usage:
+  ./$(basename "$0") [options]
+
+Options:
+  --target DIR       Installation directory
+                     (default: $HOME/.local/opt/$package_name)
+  --extract FILE     Extract the embedded tar.gz without installing
+  --yes              Accept the default installation directory
+  -h, --help         Show this help
+USAGE
+}
+
+fail() {
+  echo "error: $*" >&2
+  exit 1
+}
+
+target=""
+extract_file=""
+accept_default=0
+
+while (($# > 0)); do
+  case "$1" in
+    --target)
+      (($# >= 2)) || fail "--target requires a directory"
+      target="$2"
+      shift 2
+      ;;
+    --extract)
+      (($# >= 2)) || fail "--extract requires a filename"
+      extract_file="$2"
+      shift 2
+      ;;
+    --yes)
+      accept_default=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      fail "unknown option: $1"
+      ;;
+  esac
+done
+
+payload_line="$(awk '/^__SMV_PAYLOAD_FOLLOWS__$/ { print NR + 1; exit }' "$0")"
+[[ -n "$payload_line" ]] || fail "embedded archive marker not found"
+
+if [[ -n "$extract_file" ]]; then
+  if [[ -e "$extract_file" ]]; then
+    fail "refusing to overwrite existing file: $extract_file"
+  fi
+  tail -n +"$payload_line" "$0" > "$extract_file"
+  echo "Extracted $extract_file"
+  exit 0
+fi
+
+default_target="$HOME/.local/opt/$package_name"
+if [[ -z "$target" ]]; then
+  target="$default_target"
+  if ((accept_default == 0)); then
+    echo "Ashton Smokeview v${version}"
+    echo
+    read -r -p "Installation directory [$default_target]: " answer
+    target="${answer:-$default_target}"
+  fi
+fi
+
+if [[ -e "$target" && ! -d "$target" ]]; then
+  fail "installation target exists and is not a directory: $target"
+fi
+
+mkdir -p "$target"
+temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/ashton-smokeview-install.XXXXXX")"
+trap 'rm -rf -- "$temporary_dir"' EXIT
+tail -n +"$payload_line" "$0" | tar -xz -C "$temporary_dir"
+cp -R "$temporary_dir/$package_name/." "$target/"
+chmod 0755 "$target/smokeview"
+
+link_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
+mkdir -p "$link_dir"
+ln -sfn "$target/smokeview" "$link_dir/smokeview"
+
+echo
+echo "Installed Ashton Smokeview in $target"
+echo "Launcher: $link_dir/smokeview"
+if [[ ":$PATH:" != *":$link_dir:"* ]]; then
+  echo "Add $link_dir to PATH, or run $target/smokeview directly."
+fi
+exit 0
+
+__SMV_PAYLOAD_FOLLOWS__
+EOF
+
+cat "$payload_path" >> "$installer_path"
+chmod 0755 "$installer_path"
 (
   cd "$output_dir"
-  sha256sum "$(basename "$archive_path")" > "$(basename "$checksum_path")"
+  sha256sum "$(basename "$installer_path")" > "$(basename "$checksum_path")"
 )
 
-echo "Created $archive_path"
+echo "Created $installer_path"
 echo "Created $checksum_path"
