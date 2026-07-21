@@ -16,7 +16,7 @@ include(FetchContent)
 if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
 endif()
-project(smv LANGUAGES C CXX VERSION 1.17.0)
+project(smv LANGUAGES C CXX VERSION 0.1.0)
 # Use C99
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -26,7 +26,7 @@ set(CMAKE_C_STANDARD_REQUIRED TRUE)
 # GNUInstallDirs is used to set the appropriate paths for install artefacts.
 # Despite the name it's still useful on Windows.
 include(GNUInstallDirs)
-add_compile_definitions(pp_GITHASH="${PROJECT_VERSION}+sc2")
+add_compile_definitions(pp_GITHASH="${PROJECT_VERSION}+ashton")
 
 include(InstallRequiredSystemLibraries)
 configure_file(LICENSE.md LICENSE.txt)

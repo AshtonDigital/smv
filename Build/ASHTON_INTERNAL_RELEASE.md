@@ -131,7 +131,7 @@ self-extracting `.sh` installer and Windows produces an NSIS `.exe` installer.
 
 ```bash
 scripts/package_release_linux.sh \
-  --version 1.0.0 \
+  --version 0.1.0 \
   --config path/to/curated/smokeview.ini
 ```
 
@@ -139,7 +139,7 @@ From an x64 Visual Studio Developer PowerShell on Windows:
 
 ```powershell
 scripts\package_release_windows.ps1 `
-  -Version 1.0.0 `
+  -Version 0.1.0 `
   -ConfigFile path\to\curated\smokeview.ini
 ```
 
