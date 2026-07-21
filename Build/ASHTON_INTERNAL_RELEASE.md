@@ -73,22 +73,24 @@ Smokeview root directory. For the portable internal package, the executable,
 `smokeview.ini`, and `objects.svo` must be placed in the same top-level
 directory.
 
-The current development configuration was obtained from:
+The approved company-default configuration is maintained at:
 
 ```text
 /home/tomcox/SharedFolder/VMLinux/smokeview.ini
 ```
 
-That file is a complete saved Smokeview configuration, not just a colourbar
-definition file. Before v1, create and review a curated release INI containing:
+`Build/for_bundle/smokeview.ini` is the version-controlled release snapshot of
+that file and is packaged on both platforms. The company default is a complete
+saved Smokeview configuration, not just a colourbar definition file. Review
+changes to it for:
 
 - the standard Smokeview defaults required by the team;
 - the four approved custom `GCOLORBAR` definitions;
 - the approved `V2_SLICE` bounds;
 - any required `RESULTWORKFLOW` overrides.
 
-Avoid shipping case-specific camera, input-file, clipping, or display state as
-global defaults unless the team has explicitly approved those settings.
+Only ship case-specific camera, input-file, clipping, or display state when the
+team has explicitly approved those settings as part of the company default.
 
 ## Development Build
 
@@ -154,11 +156,17 @@ fork release, for example `6.11.2-af1`. Increment `ASHTON_RELEASE` in the root
 The packaging scripts derive the version automatically and reject an installer
 whose package version does not match the revision embedded in its executable.
 
-The Windows installer includes `capture_result_slices.py` beside
-`smokeview.exe`. This keeps the capture utility matched to the custom Smokeview
-build and lets it discover the installed executable without a `--smokeview`
-argument. End users still need Python 3.10 or newer and, unless they use
-`--no-crop`, ImageMagick.
+Both installers include `capture_result_slices.py` beside the Smokeview
+executable. This keeps the capture utility matched to the custom build and lets
+it discover the installed executable without a `--smokeview` argument. End
+users still need Python 3.10 or newer and, unless they use `--no-crop`,
+ImageMagick.
+
+On Windows, the installer adds **Capture result slices** to the `.smv` file
+context menu. On Linux, it installs the `ashton-smokeview` and
+`ashton-capture-slices` commands and registers **Capture result slices** as an
+`.smv` application under **Open With**. These actions start a separate automated
+Smokeview process; an existing interactive window can remain open.
 
 The manual commands below document the underlying Linux process and remain
 useful for troubleshooting.

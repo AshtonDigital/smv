@@ -53,6 +53,17 @@ building the repository.  Each bundle must be built for the user's operating
 system and architecture, and should also include any required `colorbars/` and
 `textures/` directories.
 
+The Ashton installers provide operating-system integrations for the matched
+capture utility. On Windows, right-click an `.smv` file and select **Capture
+result slices**. On Linux, use **Open With → Capture result slices**, or run:
+
+```shell
+ashton-capture-slices /path/to/case.smv
+```
+
+These integrations start a separate automated Smokeview process. An existing
+interactive Smokeview window can remain open while capture runs.
+
 ## slice2html.sh
 
 This script is used to generate an HTML page from an smv file. To use it, add an alias to your startup file, typically .bashrc (change the ... in the first part of the path to match your repo location):

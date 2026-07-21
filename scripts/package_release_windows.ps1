@@ -192,6 +192,48 @@ try {
     Copy-Item -LiteralPath $ColorbarsDir -Destination (Join-Path $PackageDir "colorbars") -Recurse
     Copy-Item -LiteralPath $TexturesDir -Destination (Join-Path $PackageDir "textures") -Recurse
 
+    @'
+@echo off
+setlocal
+
+if "%~1"=="" (
+    echo Usage: capture_result_slices.cmd C:\path\to\case.smv
+    echo.
+    echo You can also right-click an .smv file and select "Capture result slices".
+    pause
+    exit /b 2
+)
+
+set "CASE_FILE=%~f1"
+if not exist "%CASE_FILE%" (
+    echo Error: Smokeview case not found: %CASE_FILE%
+    pause
+    exit /b 2
+)
+
+where py.exe >nul 2>&1
+if not errorlevel 1 (
+    py -3 "%~dp0capture_result_slices.py" "%CASE_FILE%" --smokeview "%~dp0smokeview.exe" --overwrite
+) else (
+    where python.exe >nul 2>&1
+    if errorlevel 1 (
+        echo Error: Python 3.10 or newer was not found.
+        echo Install Python from https://www.python.org/downloads/windows/
+        pause
+        exit /b 2
+    )
+    python "%~dp0capture_result_slices.py" "%CASE_FILE%" --smokeview "%~dp0smokeview.exe" --overwrite
+)
+
+if errorlevel 1 (
+    echo.
+    echo Capture failed. Review the messages above.
+    pause
+    exit /b 1
+)
+endlocal
+'@ | Set-Content -LiteralPath (Join-Path $PackageDir "capture_result_slices.cmd") -Encoding ASCII
+
     $Commit = (& git -C $RepoRoot rev-parse --short=12 HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { $Commit = "unknown" }
     $DirtyOutput = & git -C $RepoRoot status --porcelain --untracked-files=no
@@ -219,6 +261,13 @@ The packaged smokeview.ini and objects.svo files are loaded from this directory.
 Capture every configured result-review slice with:
 
   python .\capture_result_slices.py C:\absolute\path\to\case.smv --overwrite
+
+Alternatively, right-click an .smv file in File Explorer and select:
+
+  Capture result slices
+
+This starts a separate automated Smokeview process. An interactive Smokeview
+window may remain open while capture runs.
 
 The capture utility requires Python 3.10 or newer. Model cropping requires
 ImageMagick; install it from PowerShell with:
@@ -276,6 +325,11 @@ Section "Smokeview" SEC_SMOKEVIEW
     WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\DefaultIcon" "" "$INSTDIR\smokeview.exe,0"
     WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\shell\open\command" "" '"$INSTDIR\smokeview.exe" "%1"'
 
+    WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\shell\capture" "" "Capture result slices"
+    WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\shell\capture" "Icon" "$INSTDIR\smokeview.exe,0"
+    WriteRegStr HKCU "Software\Classes\AshtonSmokeview.smv\shell\capture\command" "" '"$INSTDIR\capture_result_slices.cmd" "%1"'
+    System::Call 'shell32.dll::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
+
     CreateDirectory "$SMPROGRAMS\Ashton Digital"
     CreateShortcut "$SMPROGRAMS\Ashton Digital\Smokeview.lnk" "$INSTDIR\smokeview.exe"
     WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -286,6 +340,7 @@ Section "Uninstall"
     Delete "$SMPROGRAMS\Ashton Digital\Smokeview.lnk"
     RMDir "$SMPROGRAMS\Ashton Digital"
     DeleteRegKey HKCU "Software\Classes\AshtonSmokeview.smv"
+    System::Call 'shell32.dll::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\AshtonSmokeview"
     DeleteRegKey HKCU "Software\Ashton Digital\Smokeview"
     RMDir /r "$INSTDIR"
