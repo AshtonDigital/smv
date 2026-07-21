@@ -375,6 +375,8 @@ void InitKeywords(void){
   InitKeyword("RENDERDIR",           SCRIPT_RENDERDIR, 1);
   InitKeyword("RENDERDOUBLEONCE",    SCRIPT_RENDERDOUBLEONCE, 1);
   InitKeyword("RENDERONCE",          SCRIPT_RENDERONCE, 1);
+  InitKeyword("RENDERFULLSCREEN",    SCRIPT_RENDERFULLSCREEN, 0);
+  InitKeyword("RENDERRESULTS",       SCRIPT_RENDERRESULTS, 2);
   InitKeyword("RENDERSIZE",          SCRIPT_RENDERSIZE, 1);
   InitKeyword("RENDERSTART",         SCRIPT_RENDERSTART, 1);
   InitKeyword("RENDERTYPE",          SCRIPT_RENDERTYPE, 1);
@@ -970,6 +972,21 @@ int CompileScript(char *scriptfile){
       case SCRIPT_RENDERDOUBLEONCE:
         SETcval2;
         break;
+
+// RENDERRESULTS
+// file name prefix (char)
+// time (float)
+      case SCRIPT_RENDERRESULTS:
+        SETcval;
+        SETfval;
+        scripti->first = 1;
+        scripti->exit = 0;
+        scripti->ival = 0;
+        scripti->ival2 = -1;
+        scripti->ival3 = 0;
+        scripti->ival4 = 0;
+        scripti->ival5 = 0;
+        break;
 // RENDERSTART
 //  start_frame (int) skip_frame (int)
       case SCRIPT_RENDERSTART:
@@ -1506,6 +1523,120 @@ case SCRIPT_LOADSMV:
 void ScriptRenderStart(scriptdata *scripti){
   script_startframe=scripti->ival;
   script_skipframe=scripti->ival2;
+}
+
+/* ------------------ GetCurrentScriptRenderPath ------------------------ */
+
+static int GetCurrentScriptRenderPath(char *full_path, int full_path_size){
+  char render_dir[1024], render_file[1024];
+  int length;
+
+  if(full_path == NULL || full_path_size <= 0)return 0;
+  if(GetRenderFileName(VIEW_CENTER, render_dir, render_file) != 0)return 0;
+  if(strcmp(render_dir, ".") == 0){
+    snprintf(full_path, (size_t)full_path_size, "%s", render_file);
+  }
+  else{
+    length = strlen(render_dir);
+    snprintf(full_path, (size_t)full_path_size, "%s%s%s", render_dir,
+             length > 0 && render_dir[length - 1] == dirseparator[0] ? "" : dirseparator,
+             render_file);
+  }
+  return 1;
+}
+
+/* ------------------ ScriptRenderResults ------------------------ */
+
+void ScriptRenderResults(scriptdata *scripti){
+  char render_base[1024];
+
+  if(scripti->first == 1){
+    BeginResultWorkflowCapture();
+    scripti->first = 0;
+    scripti->exit = 0;
+    scripti->ival = 0;
+    scripti->ival2 = -1;
+    scripti->ival3 = 0;
+    scripti->ival4 = 0;
+    scripti->ival5 = 3;
+    PRINTF("script: capturing configured result workflow slices (%s)\n",
+           GetResultWorkflowCaptureFeature());
+    if(script_render_width > 0 && script_render_height > 0){
+      ResizeWindow(script_render_width, script_render_height);
+    }
+    return;
+  }
+  if(scripti->ival5 == 3){
+    // Let GLUT deliver the reshape event before the first frame is rendered.
+    scripti->ival5 = 0;
+    return;
+  }
+  if(scripti->ival5 == 1){
+    char warmup_path[2048];
+
+    if(GetCurrentScriptRenderPath(warmup_path, sizeof(warmup_path)) == 1 && FILE_EXISTS(warmup_path) == YES){
+      if(remove(warmup_path) != 0)PRINTF("*** Warning: unable to remove result capture warm-up image %s\n", warmup_path);
+    }
+    FREEMEMORY(scripti->cval2);
+    scripti->cval2 = scripti->cval3;
+    scripti->cval3 = NULL;
+    scripti->ival5 = 2;
+    Keyboard('r', FROM_SMOKEVIEW);
+    return;
+  }
+  if(scripti->ival5 == 2)scripti->ival5 = 0;
+  if(CaptureNextResultWorkflowPlane(&scripti->ival, &scripti->ival2, scripti->cval,
+                                    render_base, sizeof(render_base)) == 0){
+    scripti->exit = 1;
+    PRINTF("script: captured %i result workflow slice%s\n", scripti->ival3,
+           scripti->ival3 == 1 ? "" : "s");
+    return;
+  }
+  {
+    float capture_time;
+
+    if(SetResultWorkflowCaptureTime(scripti->fval, &capture_time) == 1 && scripti->ival4 == 0){
+      PRINTF("script: result capture time %.3f s (requested %.3f s)\n", capture_time, scripti->fval);
+      scripti->ival4 = 1;
+    }
+  }
+
+  if(scripti->ival3 == 0){
+    char warmup_base[1024], warmup_path[2048];
+    int i;
+
+    NewMemory((void **)&scripti->cval3, strlen(render_base) + 1);
+    if(scripti->cval3 == NULL){
+      scripti->exit = 1;
+      return;
+    }
+    strcpy(scripti->cval3, render_base);
+    for(i = 0; i < 1000; i++){
+      snprintf(warmup_base, sizeof(warmup_base), ".smv_result_capture_warmup_%03i", i);
+      FREEMEMORY(scripti->cval2);
+      NewMemory((void **)&scripti->cval2, strlen(warmup_base) + 1);
+      if(scripti->cval2 == NULL)break;
+      strcpy(scripti->cval2, warmup_base);
+      if(GetCurrentScriptRenderPath(warmup_path, sizeof(warmup_path)) == 1 && FILE_EXISTS(warmup_path) == NO)break;
+    }
+    if(scripti->cval2 == NULL || i == 1000){
+      scripti->exit = 1;
+      return;
+    }
+    scripti->ival5 = 1;
+  }
+  else{
+    FREEMEMORY(scripti->cval2);
+    NewMemory((void **)&scripti->cval2, strlen(render_base) + 1);
+    if(scripti->cval2 == NULL){
+      scripti->exit = 1;
+      return;
+    }
+    strcpy(scripti->cval2, render_base);
+  }
+  scripti->ival3++;
+  PRINTF("script: rendering result slice to %s\n", render_base);
+  Keyboard('r', FROM_SMOKEVIEW);
 }
 
 /* ------------------ PrintRenderMessage ------------------------ */
@@ -3602,9 +3733,15 @@ int RunScriptCommand(scriptdata *script_command){
       LoadUnloadMenu(UNLOADALL);
       break;
     case SCRIPT_RENDERSIZE:
-      script_render_width = scripti->ival;
-      script_render_height = scripti->ival2;
+      script_render_width = scripti->ival <= 0 ? screenWidth : scripti->ival;
+      script_render_height = scripti->ival2 <= 0 ? screenHeight : scripti->ival2;
       RenderMenu(RenderCustom);
+      break;
+    case SCRIPT_RENDERFULLSCREEN:
+      SetMainWindow();
+      BEFOREGLUT("glutFullScreen");
+      glutFullScreen();
+      AFTERGLUT;
       break;
     case SCRIPT_RENDERTYPE:
       if(STRCMP(scripti->cval, "JPEG") == 0){
@@ -3697,6 +3834,10 @@ int RunScriptCommand(scriptdata *script_command){
       break;
     case SCRIPT_RENDERONCE:
       Keyboard('r',FROM_SMOKEVIEW);
+      returnval=1;
+      break;
+    case SCRIPT_RENDERRESULTS:
+      ScriptRenderResults(scripti);
       returnval=1;
       break;
     case SCRIPT_RENDERDOUBLEONCE:

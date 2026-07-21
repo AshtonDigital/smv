@@ -38,6 +38,7 @@ add_executable(smokeview
     unit.c
     colortable.c
     command_args.c
+    result_workflow.c
 )
 
 # GLUI sources are separate here. In some branches GLUI is conditional.

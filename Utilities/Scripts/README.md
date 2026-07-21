@@ -2,6 +2,57 @@
 
 This directory contains scripts for generating images and animations of FDS cases.  It also contains utility scripts used by other scripts in this repo, scripts for setting up the graphics environment for the image generating scripts and for identifying Git and compiler versions when building smoke iew. 
 
+## capture_result_slices.py
+
+This script opens a Smokeview case and captures every slice configured for the
+result-review shortcuts at 150 s (or the nearest available frame).  Each PNG
+uses the fitted axis view at the default zoom and clips blockages at the slice
+coordinate from the domain-maximum side.  Size-preserving projection is enabled
+to remove perspective, and outline viewing is disabled.  The full render
+includes the on-screen result label and clipping position.  By default
+Smokeview uses a borderless fullscreen window, renders at the
+dimensions of the user's current display, then crops each PNG to the model
+with a 20-pixel white border.  All captures for the same X, Y or Z axis use a
+common crop size; the colourbar, labels and time bar are removed.  Final names
+are human readable, for example
+`case Temperature X Slice 001 at 27.700m Clip Max.png`.
+
+```shell
+capture_result_slices.py path/to/case.smv
+```
+
+Images are written to `path/to/case_slice_captures`.  Use `-o DIR` to choose a
+different directory, `--overwrite` to replace existing images,
+`--size WIDTHxHEIGHT` to use a windowed capture at an explicit resolution, or
+`--smokeview EXE` to select a Smokeview executable.  Use `--time SECONDS` to
+override the default capture time, `--crop-padding PIXELS` to change the white
+border, or `--no-crop` to retain the full render.  Cropping uses ImageMagick;
+the startup dependency check stops before rendering if ImageMagick is missing,
+unless `--no-crop` is used.  If an individual model cannot be identified
+confidently, that PNG is retained uncropped with a warning.  When no executable
+is specified, the script first looks for a compatible Smokeview beside itself,
+then checks this repository's build, the `SMV` environment variable, and
+`PATH`; older Smokeview releases do not contain the required `RENDERRESULTS`
+command.  Run `capture_result_slices.py --help` for all options.
+
+Users without a source checkout can receive a portable folder containing the
+matching custom Smokeview build and its resources:
+
+```text
+ashton-smokeview-linux-x64/
+|-- capture_result_slices.py
+|-- smokeview
+|-- smokeview.ini
+`-- objects.svo
+```
+
+The launcher recognises `smokeview`, `smokeview_linux`, or `smokeview.exe`
+beside itself.  After installing Python and ImageMagick, a user can extract the
+folder and run `./capture_result_slices.py path/to/case.smv` without cloning or
+building the repository.  Each bundle must be built for the user's operating
+system and architecture, and should also include any required `colorbars/` and
+`textures/` directories.
+
 ## slice2html.sh
 
 This script is used to generate an HTML page from an smv file. To use it, add an alias to your startup file, typically .bashrc (change the ... in the first part of the path to match your repo location):
@@ -43,7 +94,7 @@ how images are generated (number of processes, what queue to use) and an option 
 ```
           slice: TEMPERATURE/Y=1.6
          bounds: default
-      color bar: show
+      colour bar: show
        time bar: show
       font size: small
       viewpoint: VIEWYMIN
@@ -57,7 +108,7 @@ how images are generated (number of processes, what queue to use) and an option 
 
 s - select slice
 b - set bounds
-C - hide color bar
+C - hide colour bar
 T - hide time bar
 F - toggle font size
 v - set viewpoint

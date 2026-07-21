@@ -2193,6 +2193,7 @@ extern "C" void GLUISceneMotionCB(int var){
     case PROJECTION:
       ZoomMenu(UPDATE_PROJECTION);
       camera_current->projection_type=projection_type;
+      RefitActiveResultWorkflowView();
       return;
     case EYELEVEL:
       desired_view_height=1.5;

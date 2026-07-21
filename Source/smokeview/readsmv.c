@@ -3376,6 +3376,26 @@ int ReadIni2(const char *inifile, int localfile){
     CheckMemory;
     if(fgets(buffer, 255, stream) == NULL)break;
 
+    if(MatchINI(buffer, "RESULTWORKFLOW") == 1){
+      char name[255], slice_label[255], workflow_colorbar_label[255];
+      char *name_ptr, *slice_ptr, *colorbar_ptr;
+
+      if(fgets(name, 255, stream) == NULL ||
+         fgets(slice_label, 255, stream) == NULL ||
+         fgets(workflow_colorbar_label, 255, stream) == NULL){
+        fprintf(stderr, "*** Warning: incomplete RESULTWORKFLOW record in %s\n", inifile);
+        break;
+      }
+      TrimBack(name);
+      TrimBack(slice_label);
+      TrimBack(workflow_colorbar_label);
+      name_ptr = TrimFront(name);
+      slice_ptr = TrimFront(slice_label);
+      colorbar_ptr = TrimFront(workflow_colorbar_label);
+      ConfigureResultWorkflow(name_ptr, slice_ptr, colorbar_ptr);
+      continue;
+    }
+
     if(MatchINI(buffer, "RESEARCHMODE") == 1){
       int dummy;
 
@@ -7018,6 +7038,7 @@ int ReadIni(char *inifile){
   //      is not writable
 
   global_scase.ntickinfo=global_scase.ntickinfo_smv;
+  ResetResultWorkflows();
 
   // Read "smokeview.ini" from bin dir
   char *global_ini = GetSystemIniPath();

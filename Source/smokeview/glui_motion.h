@@ -111,6 +111,7 @@ EXTERNCPP void GLUICloseRollouts(GLUI *dialog);
 EXTERNCPP void GLUIToggleRollout(procdata *procinfo, int nprocinfo, int motion_id);
 #endif
 EXTERNCPP void GLUIUpdatePosView(void);
+EXTERNCPP void Camera2Quat(cameradata *ca, float *quat, float *rotation);
 EXTERNCPP void GLUIUpdateRenderRadioButtons(int width_low, int height_low, int width_high, int height_high);
 EXTERNCPP void GLUIUpdateZAxisCustom(void);
 EXTERNCPP void GLUIUpdateShowGravityVector(void);

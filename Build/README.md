@@ -1,6 +1,10 @@
 
 ## Building Smokeview and Utilities
 
+The Ashton internal fork release and distribution process is documented in
+[ASHTON_INTERNAL_RELEASE.md](ASHTON_INTERNAL_RELEASE.md). That guide also tracks
+the remaining acceptance work required before the internal v1 release.
+
 The directories under smv/Build contain scripts for building smokeview and utilities such as smokediff and smokezip.
 Most of these scripts assume you have an Intel C/C++ compiler.  Smokeview, smokediff and smokezip also
 assume you have an Intel Fortran Compiler.  Linux and OSX build directories also have scripts for building

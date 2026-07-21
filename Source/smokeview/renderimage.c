@@ -275,6 +275,7 @@ int GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full
       ( command == SCRIPT_RENDERONCE   || command == SCRIPT_RENDERALL         ||
         command == SCRIPT_RENDER360ALL || 
         command == SCRIPT_ISORENDERALL || command == SCRIPT_LOADSLICERENDER   || command == SCRIPT_LOADSMOKERENDER ||
+        command == SCRIPT_RENDERRESULTS ||
         command == SCRIPT_RENDERDOUBLEONCE
         ) &&
       current_script_command->cval2 != NULL

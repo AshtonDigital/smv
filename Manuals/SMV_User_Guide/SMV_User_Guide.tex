@@ -4767,6 +4767,33 @@ Smokeview will assign the filename automatically if the
 entry after the {\tt RENDERONCE}\ keyword is blank.
 
 %%+++++++++++++++++++++++
+\hitemssf{RENDERFULLSCREEN}\ Switch the Smokeview graphics window to
+borderless fullscreen mode.  This command has no parameters and is primarily
+useful before scripted image captures.
+Usage:
+\begin{lstlisting}
+RENDERFULLSCREEN
+\end{lstlisting}
+
+%%+++++++++++++++++++++++
+\hitemssf{RENDERRESULTS}\ Render every slice configured for the result-review
+workflows.  Slices are rendered in visibility, temperature, velocity and
+pressure order, with each workflow ordered by X, Y and Z coordinate.  Each
+image uses the fitted axis view at the default zoom and clips blockages from
+the domain-maximum side at the slice coordinate.  Outline viewing is disabled
+for the captures.  The first parameter is used as the start of each output
+filename.  The second parameter sets the simulation time for every capture.
+Usage:
+\begin{lstlisting}
+RENDERRESULTS
+ case_name
+ 150.0
+\end{lstlisting}
+The {\tt capture_result_slices.py}\ utility generates and runs a script using
+this command for a specified Smokeview case.  It captures at 150~s by default;
+the {\tt --time} option selects another simulation time.
+
+%%+++++++++++++++++++++++
 \hitemssf{RENDERDOUBLEONCE}\ Render the current scene at double resolution.
 Usage:
 \begin{lstlisting}
@@ -6047,6 +6074,31 @@ Smokeview.
 
 \blist
 
+\kitem{CTRL x, CTRL y, CTRL z}Cycle the selected axis through its
+minimum-facing view, maximum-facing view and the exterior view.
+
+\kitem{CTRL i, CTRL t, CTRL v, CTRL p}Cycle through configured
+visibility, temperature, velocity and pressure slices respectively.  Matching
+slices are ordered by axis (X, Y, then Z) and coordinate.  The final step hides
+the selected slice before the cycle restarts.  Each result workflow
+selects its configured colourbar and bounds; mappings in the case INI override
+those in the global INI and the built-in defaults.  The scene is clipped at the
+slice's actual coordinate, viewed from the domain maximum toward the slice and
+fitted at the default zoom.  Blockages on the greater-coordinate side are
+removed while slice data remains visible.
+
+\kitem{CTRL SHIFT i, CTRL SHIFT t, CTRL SHIFT v, CTRL SHIFT p}Cycle
+backwards through the corresponding configured result slices.  Reverse cycles
+start at the last matching slice and include the same hidden step before
+restarting.
+
+\kitem{CTRL m}Flip clipping for the active result workflow slice between
+the maximum side and minimum side.  For example, clipping at an X slice
+switches between retaining blockages where $X$ is less than or equal to the
+slice coordinate and retaining blockages where $X$ is greater than or equal
+to it.  Slice data is not clipped.  This shortcut has no effect when the
+active workflow slice is not clipped.
+
 
 \kitem{a}Increase slice and PLOT3D vector length (use ALT a to decrease vector length).
 
@@ -7276,6 +7328,27 @@ GCOLORBAR
 where ncolorbars is the number of colorbars, m\_nodes is the number of nodes
 (can be different for each colorbar), index\_i, ri, gi and bi are the red, green, blue components for
 node i.
+
+\hitemini{RESULTWORKFLOW}Associates a review workflow with a slice
+quantity and a user-defined colourbar.  This keyword may be repeated for the
+canonical workflow names \texttt{visibility}, \texttt{temperature},
+\texttt{velocity} and \texttt{pressure}.  Its format is
+\begin{lstlisting}
+RESULTWORKFLOW
+ workflow_name
+ slice_short_label
+ colorbar_name
+\end{lstlisting}
+where \texttt{slice\_short\_label} matches the short or long label of the
+required slice quantity and \texttt{colorbar\_name} exactly matches a
+\texttt{GCOLORBAR} name.  Fixed numeric bounds are read from the existing
+\texttt{V2\_SLICE} entry for the slice label.  If fixed bounds are absent,
+Smokeview uses the bounds of the selected slice files.  This keyword may be
+specified in the global \texttt{smokeview.ini} or the case-specific INI.  A
+case-specific mapping overrides the global mapping.  The default mappings are
+\texttt{VIS\_C0.9H0.1}/\texttt{Visibility},
+\texttt{temp}/\texttt{Temperature}, \texttt{vel}/\texttt{Velocity}, and
+\texttt{pres}/\texttt{Pressure}.
 
 
 \hitemini{ISOTRAN2}Specifies the transparency state for iso-surfaces. The choices

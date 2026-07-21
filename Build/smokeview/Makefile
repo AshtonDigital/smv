@@ -51,7 +51,7 @@ csrc = callbacks.c camera.c color2rgb.c colorbars.c colorbar_defs.c colortable.c
        IOobjects.c  IOpart.c IOplot2d.c IOplot3d.c IOscript.c IOshooter.c IOslice.c IOsmoke.c IOtour.c  \
        IOwui.c IOzone.c isobox.c main.c md5.c menus.c output.c paths.c  readcad.c readgeom.c readhvac.c \
        readimage.c  readlabel.c readobject.c readslice.c  readsmoke.c  readsmvfile.c readsmv.c \
-       readtour.c renderimage.c  scontour2d.c sha1.c sha256.c shaders.c showscene.c skybox.c \
+       readtour.c renderimage.c result_workflow.c scontour2d.c sha1.c sha256.c shaders.c showscene.c skybox.c \
        smokeview.c smv_geometry.c startup.c stdio_buffer.c stdio_m.c string_util.c threader.c  \
        translate.c unit.c update.c viewports.c  
 

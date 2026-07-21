@@ -123,6 +123,7 @@ void GetColorbarLabelWidth(int show_slice_colorbar_local, int showcfast_local,
 /* ------------------------ GetViewportInfo ------------------------- */
 
 void GetViewportInfo(void){
+  char workflow_status[512];
   int doit;
   float text_height;
   float text_width;
@@ -388,6 +389,7 @@ void GetViewportInfo(void){
     nlinestotal++;
   }
   nlinestotal += titleinfo.nlines;
+  if(GetResultWorkflowStatus(workflow_status, sizeof(workflow_status)) == 1)nlinestotal++;
   if(nlinestotal==0){
     // if there is no information to be displayed, set everything to zero
     VP_title.width = 0;
@@ -1316,6 +1318,7 @@ void ViewportVerticalColorbar(int quad, GLint screen_left, GLint screen_down){
     /* -------------------------- ViewportTitle -------------------------- */
 
 void ViewportTitle(int quad, GLint screen_left, GLint screen_down){
+  char workflow_status[512];
 
   if(SubPortOrtho2(quad,&VP_title,screen_left,screen_down)==0)return;
 
@@ -1325,6 +1328,9 @@ void ViewportTitle(int quad, GLint screen_left, GLint screen_down){
   glLoadIdentity();
 
   renderInfoHeader(&titleinfo);
+  if(GetResultWorkflowStatus(workflow_status, sizeof(workflow_status)) == 1){
+    OutputText(VP_title.left, VP_title.down + titleinfo.bottom_margin, workflow_status);
+  }
 
 }
 

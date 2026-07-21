@@ -172,11 +172,25 @@ EXTERNCPP void HandleRotationType(int flag);
 EXTERNCPP void IdleCB(void);
 EXTERNCPP void Keyboard(unsigned char key, int flag);
 EXTERNCPP void KeyboardUpCB(unsigned char key, int x, int y);
+EXTERNCPP int  HandleResultWorkflowShortcut(unsigned char key, int modifiers);
 EXTERNCPP void MouseCB(int button, int state, int x, int y);
 EXTERNCPP void MouseDragCB(int xm, int ym);
 EXTERNCPP void NextXIndex(int inc,int flag);
 EXTERNCPP void NextYIndex(int inc,int flag);
 EXTERNCPP void NextZIndex(int inc,int flag);
+
+//*** result_workflow.c headers
+
+EXTERNCPP void ConfigureResultWorkflow(const char *name, const char *slice_label, const char *workflow_colorbar_label);
+EXTERNCPP void BeginResultWorkflowCapture(void);
+EXTERNCPP int  CaptureNextResultWorkflowPlane(int *workflow_index, int *plane_index,
+                                              const char *prefix, char *render_base, int render_base_size);
+EXTERNCPP int  GetResultWorkflowStatus(char *label, int label_size);
+EXTERNCPP const char *GetResultWorkflowCaptureFeature(void);
+EXTERNCPP int  RefitActiveResultWorkflowView(void);
+EXTERNCPP void ReapplyResultWorkflowCaptureClip(void);
+EXTERNCPP void ResetResultWorkflows(void);
+EXTERNCPP int  SetResultWorkflowCaptureTime(float requested_time, float *capture_time);
 EXTERNCPP void ResetGLTime(void);
 EXTERNCPP void ReshapeCB(int width, int height);
 EXTERNCPP void ResizeWindow(int width, int height);
@@ -665,12 +679,14 @@ EXTERNCPP void LoadBoundaryMenu(int value);
 EXTERNCPP void LoadHVACMenu(int value);
 EXTERNCPP void LoadParticleMenu(int value);
 EXTERNCPP void LoadPlot3dMenu(int value);
+EXTERNCPP FILE_SIZE LoadSlicei(int set_slicecolor, int value, int time_frame, float *time_value);
 EXTERNCPP void LoadSliceMenu(int value);
 EXTERNCPP FILE_SIZE LoadSmoke3D(int type, int frame, int *count, float *time_value);
 EXTERNCPP void LoadSmoke3DMenu(int value);
 EXTERNCPP void LoadUnloadMenu(int value);
 EXTERNCPP void LoadVSliceMenu(int value);
 EXTERNCPP FILE_SIZE LoadVSliceMenu2(int val);
+EXTERNCPP void SetLoadedSliceBounds(int *list, int nlist);
 EXTERNCPP void MenuStatusCB(int status, int x, int y);
 EXTERNCPP void *MtLoadAllPartFiles(void *arg);
 #ifdef _WIN32
@@ -758,6 +774,7 @@ EXTERNCPP void WriteIni(int flag,char *file);
 
 EXTERNCPP void DrawScreenInfo(void);
 EXTERNCPP char *GetMovieFilePath(char *moviefile_path);
+EXTERNCPP int  GetRenderFileName(int view_mode, char *renderfile_dir, char *renderfile_full);
 EXTERNCPP void GetRenderResolution(int *width_low, int *height_low, int *width_high, int *height_high);
 EXTERNCPP GLubyte *GetScreenBuffer(void);
 EXTERNCPP void MakeMovie(void);
