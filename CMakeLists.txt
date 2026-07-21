@@ -11,8 +11,11 @@ if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.19")
 endif()
 include(FetchContent)
 
-# Selected the multithreaded runtime when using MSVC
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+# Select the multithreaded DLL runtime by default when using MSVC, while still
+# allowing release packaging to request the static runtime on the command line.
+if(NOT DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+endif()
 project(smv LANGUAGES C CXX VERSION 1.17.0)
 # Use C99
 set(CMAKE_C_STANDARD 99)

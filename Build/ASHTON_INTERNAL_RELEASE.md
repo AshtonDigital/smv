@@ -125,6 +125,33 @@ Create a clean release build with the vendored GLUT library linked statically.
 This prevents the package from referring to a library inside the developer's
 checkout.
 
+For normal releases, use the platform packaging scripts from the repository
+root. Linux produces a standard portable `tar.gz` archive; Windows produces a
+portable ZIP. A self-extracting Linux `.sh` is intentionally not used because it
+would require recipients to execute the archive before inspecting its contents.
+
+```bash
+scripts/package_release_linux.sh \
+  --version 1.0.0 \
+  --config path/to/curated/smokeview.ini
+```
+
+From an x64 Visual Studio Developer PowerShell on Windows:
+
+```powershell
+scripts\package_release_windows.ps1 `
+  -Version 1.0.0 `
+  -ConfigFile path\to\curated\smokeview.ini
+```
+
+Both scripts put the archive and a SHA-256 checksum in `dist/`. They accept
+`--help`/`Get-Help`-style parameter discovery and can package an existing build
+with `--skip-build`/`-SkipBuild`. The Windows package uses the static MSVC
+runtime so that installing the Visual C++ Redistributable is not a prerequisite.
+
+The manual commands below document the underlying Linux process and remain
+useful for troubleshooting.
+
 ```bash
 rm -rf cbuild/release
 
