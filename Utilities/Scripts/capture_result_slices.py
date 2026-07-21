@@ -125,6 +125,11 @@ def image_magick_command() -> list[str] | None:
     magick = shutil.which("magick")
     if magick is not None:
         return [magick]
+    # Windows includes C:\Windows\System32\convert.exe, which converts disk
+    # filesystems and is unrelated to ImageMagick.  Current Windows
+    # ImageMagick releases provide magick.exe, so never use convert.exe there.
+    if sys.platform == "win32":
+        return None
     convert = shutil.which("convert")
     if convert is not None:
         return [convert]
@@ -412,6 +417,12 @@ def check_dependencies(smokeview: Path, crop_enabled: bool) -> list[str] | None:
     convert_command = image_magick_command()
     if crop_enabled:
         if convert_command is None:
+            if sys.platform == "win32":
+                raise RuntimeError(
+                    "ImageMagick is required for model cropping. Install ImageMagick "
+                    "so 'magick.exe' is on PATH, or use --no-crop. The Windows system "
+                    "'convert.exe' command is not ImageMagick."
+                )
             raise RuntimeError(
                 "ImageMagick is required for model cropping. Install ImageMagick so "
                 "'magick' or 'convert' is on PATH, or use --no-crop."

@@ -106,10 +106,18 @@ if ($Version -notmatch '^[0-9A-Za-z][0-9A-Za-z._-]*$') {
 
 $ObjectsFile = Join-Path $RepoRoot "Build/for_bundle/objects.svo"
 $RootMarkerFile = Join-Path $RepoRoot "Build/for_bundle/.smokeview_bin"
+$CaptureScript = Join-Path $RepoRoot "Utilities/Scripts/capture_result_slices.py"
 $ColorbarsDir = Join-Path $RepoRoot "Build/for_bundle/colorbars"
 $TexturesDir = Join-Path $RepoRoot "Build/for_bundle/textures"
 
-foreach ($RequiredPath in @($ConfigFile, $ObjectsFile, $RootMarkerFile, $ColorbarsDir, $TexturesDir)) {
+foreach ($RequiredPath in @(
+    $ConfigFile,
+    $ObjectsFile,
+    $RootMarkerFile,
+    $CaptureScript,
+    $ColorbarsDir,
+    $TexturesDir
+)) {
     if (-not (Test-Path -LiteralPath $RequiredPath)) {
         throw "Required package input is missing: $RequiredPath"
     }
@@ -158,6 +166,7 @@ try {
     Copy-Item -LiteralPath $Binary -Destination (Join-Path $PackageDir "smokeview.exe")
     Copy-Item -LiteralPath $ConfigFile -Destination (Join-Path $PackageDir "smokeview.ini")
     Copy-Item -LiteralPath $RootMarkerFile -Destination (Join-Path $PackageDir ".smokeview_bin")
+    Copy-Item -LiteralPath $CaptureScript -Destination (Join-Path $PackageDir "capture_result_slices.py")
     Copy-Item -LiteralPath $ObjectsFile -Destination (Join-Path $PackageDir "objects.svo")
     Copy-Item -LiteralPath $ColorbarsDir -Destination (Join-Path $PackageDir "colorbars") -Recurse
     Copy-Item -LiteralPath $TexturesDir -Destination (Join-Path $PackageDir "textures") -Recurse
@@ -185,6 +194,19 @@ Keep this directory together. Run Smokeview with an absolute path to a case:
   .\smokeview.exe C:\absolute\path\to\case.smv
 
 The packaged smokeview.ini and objects.svo files are loaded from this directory.
+
+Capture every configured result-review slice with:
+
+  python .\capture_result_slices.py C:\absolute\path\to\case.smv --overwrite
+
+The capture utility requires Python 3.10 or newer. Model cropping requires
+ImageMagick; install it from PowerShell with:
+
+  winget install --id ImageMagick.Q16 -e --source winget
+
+Use --no-crop if ImageMagick is intentionally unavailable. The case's associated
+slice and data files must remain beside the .smv file.
+
 Contact the Ashton Digital internal support channel for help with this build.
 "@ | Set-Content -LiteralPath (Join-Path $PackageDir "README.txt") -Encoding UTF8
 

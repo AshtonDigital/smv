@@ -150,6 +150,12 @@ runtime so that installing the Visual C++ Redistributable is not a prerequisite.
 Creating the Windows installer also requires NSIS 3 and its `makensis.exe`
 compiler.
 
+The Windows installer includes `capture_result_slices.py` beside
+`smokeview.exe`. This keeps the capture utility matched to the custom Smokeview
+build and lets it discover the installed executable without a `--smokeview`
+argument. End users still need Python 3.10 or newer and, unless they use
+`--no-crop`, ImageMagick.
+
 The manual commands below document the underlying Linux process and remain
 useful for troubleshooting.
 
