@@ -2,8 +2,9 @@
 ## Building Smokeview and Utilities
 
 The Ashton internal fork release and distribution process is documented in
-[ASHTON_INTERNAL_RELEASE.md](ASHTON_INTERNAL_RELEASE.md). That guide also tracks
-the remaining acceptance work required before the internal v1 release.
+[ASHTON_INTERNAL_RELEASE.md](ASHTON_INTERNAL_RELEASE.md). It documents the
+`6.11.2-af1` release scheme, company configuration, Linux and Windows
+installers, result-capture integration and remaining release checks.
 
 The directories under smv/Build contain scripts for building smokeview and utilities such as smokediff and smokezip.
 Most of these scripts assume you have an Intel C/C++ compiler.  Smokeview, smokediff and smokezip also

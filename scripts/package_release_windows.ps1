@@ -260,7 +260,7 @@ The packaged smokeview.ini and objects.svo files are loaded from this directory.
 
 Capture every configured result-review slice with:
 
-  python .\capture_result_slices.py C:\absolute\path\to\case.smv --overwrite
+  .\capture_result_slices.cmd C:\absolute\path\to\case.smv
 
 Alternatively, right-click an .smv file in File Explorer and select:
 

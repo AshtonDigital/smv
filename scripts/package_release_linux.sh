@@ -184,6 +184,14 @@ Capture every configured result-review slice with:
 
   ./capture_result_slices.py /absolute/path/to/case.smv --overwrite
 
+After installation, the equivalent commands are:
+
+  ashton-smokeview /absolute/path/to/case.smv
+  ashton-capture-slices /absolute/path/to/case.smv
+
+Desktop users can right-click an .smv file and choose
+Open With > Capture result slices.
+
 The packaged smokeview.ini and objects.svo files are loaded from this directory.
 The capture utility requires Python 3.10 or newer and, unless --no-crop is used,
 ImageMagick. It launches a separate automated Smokeview process, so an
