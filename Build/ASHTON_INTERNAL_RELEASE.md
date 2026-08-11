@@ -14,11 +14,20 @@ The fork adds CFD result-review workflows intended to reduce repetitive setup.
 | `Ctrl+X` | Cycle X-minimum, X-maximum, and exterior views |
 | `Ctrl+Y` | Cycle Y-minimum, Y-maximum, and exterior views |
 | `Ctrl+Z` | Cycle Z-minimum, Z-maximum, and exterior views |
-| `Ctrl+I` | Cycle scalar visibility slices |
+| `Ctrl+I` or `Ctrl+L` | Cycle scalar visibility slices |
 | `Ctrl+T` | Cycle scalar temperature slices |
 | `Ctrl+V` | Cycle scalar velocity-magnitude slices |
 | `Ctrl+P` | Cycle scalar pressure slices |
 | `Ctrl+U` | Unload all loaded data and end the active result workflow |
+
+`Ctrl+I` and `Ctrl+L` both select visibility. `Ctrl+I` shares its key code with
+TAB, which some window managers and remote-desktop clients (NoMachine/NX among
+them) intercept before Smokeview ever receives it; `Ctrl+L` is a collision-free
+backup that behaves identically. If both are unresponsive over a remote-desktop
+session, tapping `d` and, while still holding it, pressing `i` also triggers
+the visibility shortcut — `d` is Smokeview's own sticky-Ctrl key, so this
+synthesises the Ctrl modifier with a printable `i` instead of relying on the
+raw Ctrl+I key code at all.
 
 Each result shortcut cycles matching planes in X, Y, then Z order. Selecting a
 plane loads its slice files, selects the configured colourbar and bounds, clips
@@ -162,14 +171,75 @@ whose package version does not match the revision embedded in its executable.
 Both installers include `capture_result_slices.py` beside the Smokeview
 executable. This keeps the capture utility matched to the custom build and lets
 it discover the installed executable without a `--smokeview` argument. End
-users still need Python 3.10 or newer and, unless they use `--no-crop`,
-ImageMagick.
+users still need Python 3.10 or newer (enforced with a clear error rather than
+a raw `SyntaxError`/exception on older interpreters) and, unless they use
+`--no-crop`, ImageMagick (either the `magick` or the `convert` command). On
+Ubuntu/Debian, install it with:
+
+```bash
+sudo apt-get install imagemagick
+```
 
 On Windows, the installer adds **Capture result slices** to the `.smv` file
-context menu. On Linux, it installs the `ashton-smokeview` and
-`ashton-capture-slices` commands and registers **Capture result slices** as an
-`.smv` application under **Open With**. These actions start a separate automated
-Smokeview process; an existing interactive window can remain open.
+context menu. On Linux, it installs the `af-smv` and `smv-cap` commands and
+registers **Capture result slices** as an `.smv` application under **Open
+With**. These actions start a separate automated Smokeview process; an
+existing interactive window can remain open.
+
+### Building on the correct Linux version
+
+glibc is backward-compatible but not forward-compatible: a binary built on a
+newer Linux distribution requires that distribution's glibc or newer, and fails
+on an older one with an error like:
+
+```text
+smokeview: /lib/x86_64-linux-gnu/libc.so.6: version `GLIBC_2.38' not found
+```
+
+**Always build the release binary on the oldest Linux version you need to
+support, never on a newer development machine.** For example, a workstation
+running Ubuntu 26.04 (glibc 2.43) cannot produce a binary that runs on a
+machine running Ubuntu 22.04 "jammy" (glibc 2.35) — building on jammy itself
+(or older) produces a binary that runs on jammy *and* on every newer release.
+
+If the development machine itself runs a newer Ubuntu release than your oldest
+supported target, build inside a container matching the target instead of on
+the host:
+
+```bash
+sudo docker run --rm -it -v "$PWD":/src -w /src ubuntu:22.04 bash
+```
+
+(`sudo` is required for a snap-installed Docker, which does not create a
+regular `docker` group.) Inside the container:
+
+```bash
+apt-get update
+apt-get install -y build-essential cmake git \
+  freeglut3-dev libx11-dev libxmu-dev libxi-dev libglew-dev libgd-dev libjson-c-dev
+```
+
+Ubuntu 22.04's apt `cmake` is 3.22, but this project requires 3.24 or newer
+(`CMakeLists.txt:2`). Get a current one with pip instead of apt:
+
+```bash
+apt-get install -y python3-pip
+pip3 install --upgrade cmake
+hash -r
+cmake --version
+```
+
+Then build and package as normal (see the Release Build steps below); because
+`/src` is a bind mount of the repository, `dist/` appears on the host as soon
+as packaging finishes, with no extra copy step. Verify the glibc floor before
+distributing:
+
+```bash
+objdump -T cbuild/release-linux/smokeview | grep GLIBC_ | sed 's/.*GLIBC_//' | sort -uV | tail -1
+```
+
+That version must not exceed the oldest supported target's glibc version
+(2.35 for Ubuntu 22.04).
 
 The manual commands below document the underlying Linux process and remain
 useful for troubleshooting.
@@ -195,8 +265,9 @@ readelf -d cbuild/release-linux/smokeview | grep -E 'RPATH|RUNPATH' || true
 
 The output must not contain paths under a developer's home directory or source
 checkout. The Linux build will still depend on common system OpenGL, X11, image,
-and C/C++ runtime libraries. Build on the oldest supported internal Linux image
-and test the package on every supported Linux image.
+and C/C++ runtime libraries — see "Building on the correct Linux version" above
+for why the build host matters, not just the runtime libraries. Test the
+package on every supported Linux image.
 
 ## Package Layout
 
@@ -262,6 +333,16 @@ Verify all of the following before distributing a release:
   `Space`, `1` through `9`, and existing mouse modifiers.
 - `Ctrl+X`, `Ctrl+Y`, and `Ctrl+Z` cycle the expected standard views.
 - `Ctrl+I`, `Ctrl+T`, `Ctrl+V`, and `Ctrl+P` select the correct scalar quantity.
+  Test `Ctrl+I` specifically **with a GLUI dialog window focused**, not just
+  the main graphics window — Ctrl+I shares its key code with TAB, which GLUI
+  previously intercepted for dialog focus-cycling regardless of the Ctrl
+  modifier. `Ctrl+L` selects visibility identically, as a backup binding that
+  does not share a key code with any other key.
+- With Caps Lock on, `Ctrl+X`, `Ctrl+Y`, `Ctrl+Z`, and `Ctrl+U` do nothing (the
+  vendored GLUT folds Caps Lock into the Shift modifier), and `Ctrl+I`/`Ctrl+L`/
+  `Ctrl+T`/`Ctrl+V`/`Ctrl+P` cycle backwards instead of forwards. This is
+  expected; confirm it does not surprise testers rather than treating it as a
+  regression.
 - Each result workflow cycles every expected X, Y, and Z plane in order.
 - Each selected slice receives the correct colourbar and numeric bounds.
 - Clipping uses the selected slice's actual coordinate.
@@ -278,9 +359,13 @@ Verify all of the following before distributing a release:
   Smokeview window remains open.
 - On Windows, double-clicking an `.smv` file opens Ashton Smokeview and the
   **Capture result slices** File Explorer context action works.
-- On Linux, `ashton-smokeview` and `ashton-capture-slices` are available, an
-  `.smv` file opens in Ashton Smokeview by default, and **Open With > Capture
-  result slices** works in the desktop file manager.
+- On Linux, `af-smv` and `smv-cap` are available, an `.smv` file opens in
+  Ashton Smokeview by default, and **Open With > Capture result slices** works
+  in the desktop file manager.
+- On a shared Linux machine installed with `--system`, `af-smv` and `smv-cap`
+  resolve and run for a **second, non-installing user account**, not just the
+  account that ran the installer, and that second user also gets the `.smv`
+  **Open With > Capture result slices** entry.
 
 ## Publishing Internally
 
@@ -293,12 +378,54 @@ Publish both the installer and its `.sha256` file using one controlled location:
 Do not distribute an unversioned installer over an existing release. Keep old
 installers available so a team can roll back to the preceding known-good version.
 
-Linux recipients should make the downloaded installer executable and run it:
+Linux recipients installing only for themselves should make the downloaded
+installer executable and run it:
 
 ```bash
 chmod +x ashton-smokeview-v6.11.2-af1-linux-x64.sh
 ./ashton-smokeview-v6.11.2-af1-linux-x64.sh
 ```
+
+That installs under `$HOME/.local/opt`, with the `af-smv`/`smv-cap` commands
+symlinked into `$HOME/.local/bin` and the `.smv` file association set only for
+that user.
+
+### Installing for every user on a shared machine
+
+On a shared machine where several people need to run Smokeview and cannot use
+sudo themselves, one administrator installs it once for everybody with
+`--system`:
+
+```bash
+chmod +x ashton-smokeview-v6.11.2-af1-linux-x64.sh
+sudo ./ashton-smokeview-v6.11.2-af1-linux-x64.sh --system
+```
+
+`--system` requires root and installs into `/opt`, symlinks `af-smv`, `smv-cap`
+and a generic `smokeview` into `/usr/local/bin` (on every user's `PATH` by
+default), and registers the `.smv` file association and desktop entries under
+`/usr/share` rather than any one user's home directory. It also sets the
+system-wide default `.smv` application directly, since `xdg-mime default` only
+ever writes the invoking (root) user's own configuration and cannot set a
+machine-wide default on its own. **Do not** run the installer as root without
+`--system` — that installs a copy usable only by the root account, under
+`/root`, which is invisible and useless to everyone else; the installer prints
+a warning if you do this.
+
+Because the target machine itself needs no build tools, only these runtime
+packages, install them once on the shared machine (adjust package names for
+non-Debian distributions):
+
+```bash
+sudo apt-get install libglew2.2 libgd3 libgl1 libglu1-mesa libxmu6 libx11-6 \
+  libxext6 libxt6 imagemagick python3
+```
+
+One consequence of a root-owned, shared `/opt` install: users cannot save
+Smokeview settings back into the packaged `smokeview.ini`, since it is not
+writable by them. This has not come up as a problem in practice, since the
+approved company default is meant to be used as shipped, but it is worth
+knowing if a user reports that "Save Settings" silently fails.
 
 Windows recipients run the `.exe` installer normally. The Linux installer cannot
 be used natively on Windows; each platform needs its own build and acceptance-test

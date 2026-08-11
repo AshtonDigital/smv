@@ -971,6 +971,10 @@ int HandleResultWorkflowShortcut(unsigned char key, int modifiers){
       CycleAxisView(2);
       return 1;
     case 'i':
+    case 'l':
+      /* 'l' is a collision-free backup for visibility: Ctrl+I shares its
+         key code with TAB, which some window managers and remote-desktop
+         clients intercept before Smokeview ever sees it. */
       SelectWorkflowPlane(WORKFLOW_VISIBILITY, apply_clip_view, direction);
       return 1;
     case 't':

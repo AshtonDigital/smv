@@ -67,7 +67,7 @@ $install = "$env:LOCALAPPDATA\Ashton Digital\Smokeview"
 On Linux, use **Open With > Capture result slices**, or run:
 
 ```shell
-ashton-capture-slices /path/to/case.smv
+smv-cap /path/to/case.smv
 ```
 
 Normal `.smv` opening and automated capture are separate actions. Double-click

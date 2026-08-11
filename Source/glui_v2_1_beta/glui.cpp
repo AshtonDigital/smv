@@ -642,8 +642,11 @@ void    GLUI_Main::keyboard(unsigned char key, int x, int y)
   curr_modifiers = glutGetModifiers();
 
   /*** If it's a tab or shift tab, we don't pass it on to the controls.
-    Instead, we use it to cycle through active controls ***/
-  if ( key == '\t' AND mouse_button_down == false ) {
+    Instead, we use it to cycle through active controls.  Ctrl+Tab shares
+    the same key code as Ctrl+I, so leave it alone when Ctrl is held and let
+    it fall through to the active control (and from there to Smokeview's own
+    Ctrl shortcuts) instead of cycling dialog focus. ***/
+  if ( key == '\t' AND mouse_button_down == false AND (curr_modifiers & GLUT_ACTIVE_CTRL) == 0 ) {
     if ( curr_modifiers & GLUT_ACTIVE_SHIFT ) {
       new_control = find_prev_control( active_control );
     }

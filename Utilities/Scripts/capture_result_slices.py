@@ -396,6 +396,11 @@ def check_dependencies(smokeview: Path, crop_enabled: bool) -> list[str] | None:
         print(message, flush=True)
 
     report("Dependency check:")
+    if sys.version_info < (3, 10):
+        raise RuntimeError(
+            f"Python 3.10 or newer is required; found "
+            f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}."
+        )
     report(f"  [OK] Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
 
     if sys.platform.startswith("linux"):

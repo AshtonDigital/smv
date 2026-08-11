@@ -186,16 +186,21 @@ Capture every configured result-review slice with:
 
 After installation, the equivalent commands are:
 
-  ashton-smokeview /absolute/path/to/case.smv
-  ashton-capture-slices /absolute/path/to/case.smv
+  af-smv /absolute/path/to/case.smv
+  smv-cap /absolute/path/to/case.smv
 
 Desktop users can right-click an .smv file and choose
 Open With > Capture result slices.
 
 The packaged smokeview.ini and objects.svo files are loaded from this directory.
 The capture utility requires Python 3.10 or newer and, unless --no-crop is used,
-ImageMagick. It launches a separate automated Smokeview process, so an
-interactive Smokeview window may remain open while capture runs.
+ImageMagick (either the "magick" or the "convert" command). On Ubuntu/Debian,
+install it with:
+
+  sudo apt-get install imagemagick
+
+It launches a separate automated Smokeview process, so an interactive Smokeview
+window may remain open while capture runs.
 Contact the Ashton Digital internal support channel for help with this build.
 EOF
 
@@ -224,7 +229,11 @@ Usage:
 
 Options:
   --target DIR       Installation directory
-                     (default: $HOME/.local/opt/$package_name)
+                     (default: $HOME/.local/opt/$package_name, or
+                     /opt/$package_name with --system)
+  --system           Install for all users: /opt, /usr/local/bin and
+                     /usr/share instead of the per-user \$HOME defaults.
+                     Requires root. Implies --yes.
   --extract FILE     Extract the embedded tar.gz without installing
   --yes              Accept the default installation directory
   -h, --help         Show this help
@@ -236,9 +245,14 @@ fail() {
   exit 1
 }
 
+# A permissive umask so a root --system install leaves the package readable
+# and traversable by every user, regardless of the invoking shell's umask.
+umask 022
+
 target=""
 extract_file=""
 accept_default=0
+system_install=0
 
 while (($# > 0)); do
   case "$1" in
@@ -246,6 +260,11 @@ while (($# > 0)); do
       (($# >= 2)) || fail "--target requires a directory"
       target="$2"
       shift 2
+      ;;
+    --system)
+      system_install=1
+      accept_default=1
+      shift
       ;;
     --extract)
       (($# >= 2)) || fail "--extract requires a filename"
@@ -278,14 +297,38 @@ if [[ -n "$extract_file" ]]; then
   exit 0
 fi
 
-default_target="$HOME/.local/opt/$package_name"
+if ((system_install == 1)) && [[ "$EUID" -ne 0 ]]; then
+  fail "--system requires root; re-run with sudo"
+fi
+if ((system_install == 0)) && [[ "$EUID" -eq 0 ]]; then
+  echo "Warning: running as root without --system installs only for the root" >&2
+  echo "account (under /root), which other users cannot use. Pass --system to" >&2
+  echo "install for all users under /opt, /usr/local/bin and /usr/share instead." >&2
+fi
+
+if ((system_install == 1)); then
+  default_target="/opt/$package_name"
+  link_dir="/usr/local/bin"
+  data_home="/usr/share"
+  config_home="/root/.config"
+else
+  default_target="$HOME/.local/opt/$package_name"
+  link_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
+  data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
+  config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+fi
+
 if [[ -z "$target" ]]; then
   target="$default_target"
   if ((accept_default == 0)); then
-    echo "Ashton Smokeview v${version}"
-    echo
-    read -r -p "Installation directory [$default_target]: " answer
-    target="${answer:-$default_target}"
+    if [[ -t 0 ]]; then
+      echo "Ashton Smokeview v${version}"
+      echo
+      read -r -p "Installation directory [$default_target]: " answer
+      target="${answer:-$default_target}"
+    else
+      echo "Non-interactive session: using default installation directory $default_target"
+    fi
   fi
 fi
 
@@ -293,17 +336,31 @@ if [[ -e "$target" && ! -d "$target" ]]; then
   fail "installation target exists and is not a directory: $target"
 fi
 
+success=0
+temporary_dir=""
+created_target=0
+[[ -e "$target" ]] || created_target=1
+
+cleanup() {
+  rm -rf -- "$temporary_dir"
+  if ((success == 0 && created_target == 1)); then
+    rm -rf -- "$target"
+  fi
+}
+trap cleanup EXIT INT TERM
+
 mkdir -p "$target"
 temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/ashton-smokeview-install.XXXXXX")"
-trap 'rm -rf -- "$temporary_dir"' EXIT
 tail -n +"$payload_line" "$0" | tar -xz -C "$temporary_dir"
 cp -R "$temporary_dir/$package_name/." "$target/"
 chmod 0755 "$target/smokeview"
+chmod 0755 "$target/capture_result_slices.py"
+chmod -R a+rX "$target"
 
-link_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
 mkdir -p "$link_dir"
-ln -sfn "$target/smokeview" "$link_dir/ashton-smokeview"
-ln -sfn "$target/capture_result_slices.py" "$link_dir/ashton-capture-slices"
+rm -f "$link_dir/ashton-smokeview" "$link_dir/ashton-capture-slices" "$link_dir/afm-smv"
+ln -sfn "$target/smokeview" "$link_dir/af-smv"
+ln -sfn "$target/capture_result_slices.py" "$link_dir/smv-cap"
 
 generic_launcher="$link_dir/smokeview"
 if [[ ! -e "$generic_launcher" && ! -L "$generic_launcher" ]]; then
@@ -314,13 +371,16 @@ else
   echo "Existing launcher was not replaced: $generic_launcher"
 fi
 
-data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
-config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 applications_dir="$data_home/applications"
 mime_dir="$data_home/mime"
 mkdir -p "$applications_dir" "$mime_dir/packages" "$config_home"
 
-cat > "$mime_dir/packages/ashton-smokeview.xml" <<'MIME_EOF'
+# Remove stale files from earlier installs that used the old command and
+# desktop-entry names, so they don't linger and keep claiming the MIME type.
+rm -f "$applications_dir/ashton-smokeview.desktop" "$applications_dir/ashton-capture-slices.desktop" "$applications_dir/afm-smv.desktop"
+rm -f "$mime_dir/packages/ashton-smokeview.xml" "$mime_dir/packages/afm-smv.xml"
+
+cat > "$mime_dir/packages/af-smv.xml" <<'MIME_EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="application/x-ashton-smokeview">
@@ -330,28 +390,30 @@ cat > "$mime_dir/packages/ashton-smokeview.xml" <<'MIME_EOF'
 </mime-info>
 MIME_EOF
 
-cat > "$applications_dir/ashton-smokeview.desktop" <<DESKTOP_EOF
+cat > "$applications_dir/af-smv.desktop" <<DESKTOP_EOF
 [Desktop Entry]
 Type=Application
 Name=Ashton Smokeview
 Comment=Open a Smokeview case
-Exec="$link_dir/ashton-smokeview" %f
+Exec="$link_dir/af-smv" %f
 Icon=applications-graphics
 Terminal=false
 MimeType=application/x-ashton-smokeview;
 DESKTOP_EOF
 
-cat > "$applications_dir/ashton-capture-slices.desktop" <<DESKTOP_EOF
+cat > "$applications_dir/smv-cap.desktop" <<DESKTOP_EOF
 [Desktop Entry]
 Type=Application
 Name=Capture result slices
 Comment=Capture configured result-review slices with Ashton Smokeview
-Exec="$link_dir/ashton-capture-slices" %f --overwrite
+Exec="$link_dir/smv-cap" %f --overwrite
 Icon=camera-photo
 Terminal=true
 NoDisplay=true
 MimeType=application/x-ashton-smokeview;
 DESKTOP_EOF
+
+chmod 0644 "$mime_dir/packages/af-smv.xml" "$applications_dir/af-smv.desktop" "$applications_dir/smv-cap.desktop"
 
 if command -v update-mime-database >/dev/null 2>&1; then
   update-mime-database "$mime_dir" >/dev/null 2>&1 || echo "Warning: could not update the MIME database."
@@ -359,23 +421,45 @@ fi
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "$applications_dir" >/dev/null 2>&1 || echo "Warning: could not update the desktop application database."
 fi
-if command -v xdg-mime >/dev/null 2>&1; then
-  xdg-mime default ashton-smokeview.desktop application/x-ashton-smokeview >/dev/null 2>&1 || \
+
+if ((system_install == 1)); then
+  # xdg-mime default only ever writes the invoking user's own mimeapps.list
+  # (root's, under sudo), so it cannot set a machine-wide default. Write the
+  # system mimeapps.list stanza directly instead.
+  mimeapps_file="$applications_dir/mimeapps.list"
+  touch "$mimeapps_file"
+  if grep -q '^\[Default Applications\]' "$mimeapps_file" 2>/dev/null; then
+    if grep -q '^application/x-ashton-smokeview=' "$mimeapps_file"; then
+      sed -i 's#^application/x-ashton-smokeview=.*#application/x-ashton-smokeview=af-smv.desktop#' "$mimeapps_file"
+    else
+      sed -i '/^\[Default Applications\]/a application/x-ashton-smokeview=af-smv.desktop' "$mimeapps_file"
+    fi
+  else
+    { echo; echo "[Default Applications]"; echo "application/x-ashton-smokeview=af-smv.desktop"; } >> "$mimeapps_file"
+  fi
+  chmod 0644 "$mimeapps_file"
+elif command -v xdg-mime >/dev/null 2>&1; then
+  xdg-mime default af-smv.desktop application/x-ashton-smokeview >/dev/null 2>&1 || \
     echo "Warning: could not set Ashton Smokeview as the default .smv application."
 fi
 
 echo
 echo "Installed Ashton Smokeview in $target"
-echo "Smokeview launcher: $link_dir/ashton-smokeview"
-echo "Capture launcher: $link_dir/ashton-capture-slices"
-echo "Run now: $link_dir/ashton-smokeview"
-echo "To capture: $link_dir/ashton-capture-slices /path/to/case.smv"
+echo "Smokeview launcher: $link_dir/af-smv"
+echo "Capture launcher: $link_dir/smv-cap"
+echo "Run now: $link_dir/af-smv"
+echo "To capture: $link_dir/smv-cap /path/to/case.smv"
 echo "Desktop integration: right-click an .smv file and choose Open With -> Capture result slices."
+if ((system_install == 1)); then
+  echo "Each user selects Ashton Smokeview as their default .smv opener the first"
+  echo "time they use Open With, or it is now already the system default shown above."
+fi
 echo "If 'smokeview' still runs an older copy, run 'type -a smokeview'."
 echo "Remove any old alias, or run 'hash -r' if the old path was cached."
 if [[ ":$PATH:" != *":$link_dir:"* ]]; then
   echo "Add $link_dir to PATH, or run $target/smokeview directly."
 fi
+success=1
 exit 0
 
 __SMV_PAYLOAD_FOLLOWS__
