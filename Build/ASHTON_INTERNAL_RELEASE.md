@@ -18,6 +18,7 @@ The fork adds CFD result-review workflows intended to reduce repetitive setup.
 | `Ctrl+T` | Cycle scalar temperature slices |
 | `Ctrl+V` | Cycle scalar velocity-magnitude slices |
 | `Ctrl+P` | Cycle scalar pressure slices |
+| `Ctrl+U` | Unload all loaded data and end the active result workflow |
 
 Each result shortcut cycles matching planes in X, Y, then Z order. Selecting a
 plane loads its slice files, selects the configured colourbar and bounds, clips
@@ -267,6 +268,7 @@ Verify all of the following before distributing a release:
 - X and Y slices use the expected side view; Z slices use the top-down view.
 - The fitted zoom shows the complete domain and normal zoom controls remain usable.
 - Advancing to `off` restores the previous camera and clipping state.
+- `Ctrl+U` unloads all data and restores the pre-workflow camera and clipping.
 - The installer passes testing on a second machine that has no source checkout.
 - The published `.sha256` file validates the installer.
 - The installed capture utility reports Python, Smokeview and ImageMagick

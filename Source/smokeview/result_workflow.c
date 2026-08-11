@@ -135,19 +135,28 @@ void ReapplyResultWorkflowCaptureClip(void){
   Clip2Cam(camera_current);
 }
 
-/* ------------------ BeginResultWorkflowCapture ------------------------ */
+/* ------------------ ClearActiveResultWorkflow ------------------------ */
 
-void BeginResultWorkflowCapture(void){
+// Hide the selected plane, restore the camera and clipping saved before the
+// workflow started and return every workflow to its first step. Configured
+// labels and bounds are left alone.
+static void ClearActiveResultWorkflow(void){
   int i;
 
   HideWorkflowPlane(&active_plane);
   RestoreWorkflowCameraClip();
-  outline_mode = SCENE_OUTLINE_HIDDEN;
-  updatefacelists = 1;
-  updatemenu = 1;
   for(i = 0; i < NRESULT_WORKFLOWS; i++)workflows[i].current_plane = -1;
   active_workflow = -1;
   active_plane.group_index = -1;
+}
+
+/* ------------------ BeginResultWorkflowCapture ------------------------ */
+
+void BeginResultWorkflowCapture(void){
+  ClearActiveResultWorkflow();
+  outline_mode = SCENE_OUTLINE_HIDDEN;
+  updatefacelists = 1;
+  updatemenu = 1;
 }
 
 /* ------------------ GetResultWorkflowStatus ------------------------ */
@@ -837,6 +846,16 @@ static int FlipWorkflowClipSide(void){
   return 1;
 }
 
+/* ------------------ UnloadAllResultData ------------------------ */
+
+static int UnloadAllResultData(void){
+  // Clear the workflow first so the pre-workflow camera and clipping are back
+  // before the data they were fitted to is unloaded.
+  ClearActiveResultWorkflow();
+  LoadUnloadMenu(UNLOADALL);
+  return 1;
+}
+
 /* ------------------ SelectWorkflowPlane ------------------------ */
 
 static void SelectWorkflowPlane(int workflow_index, int apply_clip_view, int direction){
@@ -965,6 +984,9 @@ int HandleResultWorkflowShortcut(unsigned char key, int modifiers){
       return 1;
     case 'm':
       return FlipWorkflowClipSide();
+    case 'u':
+      if((modifiers & GLUT_ACTIVE_SHIFT) != 0)return 0;
+      return UnloadAllResultData();
     default:
       return 0;
   }
