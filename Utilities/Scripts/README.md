@@ -2,6 +2,54 @@
 
 This directory contains scripts for generating images and animations of FDS cases.  It also contains utility scripts used by other scripts in this repo, scripts for setting up the graphics environment for the image generating scripts and for identifying Git and compiler versions when building smoke iew. 
 
+## Ashton Smokeview (af-smv)
+
+`af-smv` is Ashton Fire's own build of Smokeview, installed by the Ashton
+installer alongside the standard `smokeview` command. It behaves exactly like
+upstream Smokeview but adds the result-review shortcuts below, plus the
+`smv-cap` capture utility documented in the next section.
+
+```shell
+af-smv /path/to/case.smv
+```
+
+### Result-review shortcuts
+
+Used while `af-smv` is open, in addition to all the normal Smokeview
+shortcuts:
+
+| Shortcut | Action |
+| --- | --- |
+| `Ctrl+I` | Cycle through the visibility slices (try `Ctrl+L` instead if this does not respond) |
+| `Ctrl+T` | Cycle through the temperature slices |
+| `Ctrl+V` | Cycle through the velocity slices |
+| `Ctrl+P` | Cycle through the pressure slices |
+| `Ctrl+U` | Unload all loaded data and return to the view from before these shortcuts were used |
+| `Ctrl+X` | Cycle the X-minimum, X-maximum, and exterior views |
+| `Ctrl+Y` | Cycle the Y-minimum, Y-maximum, and exterior views |
+| `Ctrl+Z` | Cycle the Z-minimum, Z-maximum, and exterior views |
+
+Hold Shift with any of the above (except `Ctrl+X`/`Ctrl+Y`/`Ctrl+Z`) to cycle
+backwards instead of forwards.
+
+Each shortcut automatically loads the relevant slice, sets the correct
+colourbar and scale, cuts away the model at the slice position, switches to
+the matching view, and zooms to fit. `Ctrl+U` restores the camera view and
+cutaway exactly as they were before the shortcuts were first used.
+
+If a shortcut finds no matching slices for the current case (for example, a
+case with no visibility output), a message explaining this appears at the top
+of the Smokeview window instead of the view changing.
+
+### Right-click integration
+
+Right-clicking a `.smv` file and choosing **Open With** gives two options:
+
+- **Ashton Smokeview** — opens the case interactively, the same as
+  double-clicking it or running `af-smv` from the command line.
+- **Capture result slices** — runs `smv-cap` (see below) without opening an
+  interactive window.
+
 ## capture_result_slices.py
 
 This script opens a Smokeview case and captures every slice configured for the
@@ -31,11 +79,22 @@ override the default capture time, `--crop-padding PIXELS` to change the white
 border, or `--no-crop` to retain the full render.  Cropping uses ImageMagick;
 the startup dependency check stops before rendering if ImageMagick is missing,
 unless `--no-crop` is used.  If an individual model cannot be identified
-confidently, that PNG is retained uncropped with a warning.  When no executable
-is specified, the script first looks for a compatible Smokeview beside itself,
-then checks this repository's build, the `SMV` environment variable, and
-`PATH`; older Smokeview releases do not contain the required `RENDERRESULTS`
-command.  Run `capture_result_slices.py --help` for all options.
+confidently, that PNG is retained uncropped with a warning.  Use `--prefix
+NAME` to override the output filename prefix (default: the case name), and
+`--keep-script` to retain the generated `.ssf` script file in the output
+directory for troubleshooting.  When no executable is specified, the script
+first looks for a compatible Smokeview beside itself, then checks this
+repository's build, the `SMV` environment variable, and `PATH`; older
+Smokeview releases do not contain the required `RENDERRESULTS` command.  Run
+`capture_result_slices.py --help` for all options.
+
+Installed via the Ashton installer, the equivalent command is `smv-cap`
+instead of `python3 .../capture_result_slices.py`, and all the same options
+apply, for example:
+
+```shell
+smv-cap /path/to/case.smv --overwrite --no-crop
+```
 
 The Ashton installers include the script with its matching custom Smokeview
 build and resources:
@@ -64,11 +123,8 @@ $install = "$env:LOCALAPPDATA\Ashton Digital\Smokeview"
 & "$install\capture_result_slices.cmd" "C:\path\to\case.smv"
 ```
 
-On Linux, use **Open With > Capture result slices**, or run:
-
-```shell
-smv-cap /path/to/case.smv
-```
+On Linux, see the right-click integration described above under "Ashton
+Smokeview (af-smv)".
 
 Normal `.smv` opening and automated capture are separate actions. Double-click
 an `.smv` file to open it interactively in Ashton Smokeview. The capture action

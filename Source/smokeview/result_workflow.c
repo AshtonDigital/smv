@@ -38,15 +38,21 @@ typedef struct {
   float position;
 } workflow_plane;
 
+/* The visibility label "VIS_C" is a family, not one exact string: FDS's soot
+   visibility quantity is sometimes reported as bare "VIS_C" and sometimes with
+   a simulation-specific extinction-coefficient/soot-yield suffix such as
+   "VIS_C0.9H0.1". SliceLabelMatches() below treats the bare "VIS_C" default
+   as a prefix match against either form; any other explicitly configured
+   RESULTWORKFLOW label still requires an exact match. */
 static result_workflow workflows[NRESULT_WORKFLOWS] = {
-  {"visibility",  "VIS_C0.9H0.1", "Visibility",  1, -1, 1,   0.0f,  30.0f},
+  {"visibility",  "VIS_C", "Visibility",  1, -1, 1,   0.0f,  30.0f},
   {"temperature", "temp",          "Temperature", 1, -1, 1,  20.0f, 300.0f},
   {"velocity",    "vel",           "Velocity",    1, -1, 1,   0.0f,  10.0f},
   {"pressure",    "pres",          "Pressure",    1, -1, 1, -70.0f,  70.0f}
 };
 
 static const char *default_slice_labels[NRESULT_WORKFLOWS] = {
-  "VIS_C0.9H0.1", "temp", "vel", "pres"
+  "VIS_C", "temp", "vel", "pres"
 };
 
 static const char *default_colorbar_labels[NRESULT_WORKFLOWS] = {
@@ -58,6 +64,11 @@ static const float default_fixed_maxs[NRESULT_WORKFLOWS] = {30.0f, 300.0f, 10.0f
 
 static int active_workflow = -1;
 static workflow_plane active_plane = {-1, 0, 0, 0.0f};
+/* Surfaced on the title HUD (see GetResultWorkflowStatus/ViewportTitle) when a
+   shortcut is pressed but produces no visible change, so the failure is not
+   silent to a user with no attached console (a desktop launcher or a
+   GUI-only remote session never sees the matching stderr warning). */
+static char workflow_message[256] = {0};
 static int workflow_camera_clip_saved = 0;
 static cameradata workflow_camera_saved;
 static clipdata workflow_clip_saved;
@@ -169,7 +180,11 @@ int GetResultWorkflowStatus(char *label, int label_size){
 
   if(label == NULL || label_size <= 0)return 0;
   label[0] = 0;
-  if(active_workflow < 0 || active_workflow >= NRESULT_WORKFLOWS || active_plane.group_index < 0)return 0;
+  if(active_workflow < 0 || active_workflow >= NRESULT_WORKFLOWS || active_plane.group_index < 0){
+    if(workflow_message[0] == 0)return 0;
+    snprintf(label, (size_t)label_size, "*** %s", workflow_message);
+    return 1;
+  }
 
   workflow = workflows + active_workflow;
   axis = (char)('X' + active_plane.idir - 1);
@@ -249,6 +264,7 @@ static void RestoreWorkflowTime(float selected_time, int selected_time_valid, in
 void ResetResultWorkflows(void){
   int i;
 
+  workflow_message[0] = 0;
   HideWorkflowPlane(&active_plane);
   RestoreWorkflowCameraClip();
   for(i = 0; i < NRESULT_WORKFLOWS; i++){
@@ -308,6 +324,10 @@ static int SliceLabelMatches(const slicedata *slicei, const char *label){
   if(slicei == NULL || label == NULL)return 0;
   if(STRCMP(slicei->label.shortlabel, label) == 0)return 1;
   if(STRCMP(slicei->label.longlabel, label) == 0)return 1;
+  if(STRCMP(label, "VIS_C") == 0){
+    if(STRSTR(slicei->label.shortlabel, "VIS_C") == slicei->label.shortlabel)return 1;
+    if(STRSTR(slicei->label.longlabel, "VIS_C") == slicei->label.longlabel)return 1;
+  }
   return 0;
 }
 
@@ -856,6 +876,23 @@ static int UnloadAllResultData(void){
   return 1;
 }
 
+/* ------------------ ReportWorkflowMessage ------------------------ */
+
+/* Surfaces a workflow failure once, on the title HUD (see
+   workflow_message/GetResultWorkflowStatus above). Repeating the same failure
+   -- which happens naturally when a user presses or holds an unresponsive
+   shortcut -- is a no-op past the first occurrence, rather than repeating a
+   redisplay on every single keypress. Deliberately does not write to stderr:
+   that write was a synchronous, possibly slow flush (e.g. over a networked
+   home directory or a remote-desktop session), and repeating it on every
+   held/repeated keypress was the actual cause of shortcuts feeling sluggish. */
+static void ReportWorkflowMessage(const char *message){
+  if(STRCMP(workflow_message, message) == 0)return;
+  strncpy(workflow_message, message, sizeof(workflow_message) - 1);
+  workflow_message[sizeof(workflow_message) - 1] = 0;
+  GLUTPOSTREDISPLAY;
+}
+
 /* ------------------ SelectWorkflowPlane ------------------------ */
 
 static void SelectWorkflowPlane(int workflow_index, int apply_clip_view, int direction){
@@ -874,7 +911,10 @@ static void SelectWorkflowPlane(int workflow_index, int apply_clip_view, int dir
   }
 
   if(workflow->configured == 0){
-    fprintf(stderr, "*** Warning: RESULTWORKFLOW %s is not configured\n", workflow->name);
+    char message[256];
+
+    snprintf(message, sizeof(message), "RESULTWORKFLOW %s is not configured", workflow->name);
+    ReportWorkflowMessage(message);
     return;
   }
   // Loading a slice may replace fixed INI bounds with its loaded-data range.
@@ -882,10 +922,15 @@ static void SelectWorkflowPlane(int workflow_index, int apply_clip_view, int dir
   CacheAllWorkflowBounds();
   nplanes = BuildWorkflowPlanes(workflow, is_vector, &planes);
   if(nplanes == 0){
-    fprintf(stderr, "*** Warning: no %s slices match label %s\n", workflow->name, workflow->slice_label);
+    char message[WORKFLOW_LABEL_LEN + 64];
+
+    snprintf(message, sizeof(message), "no %s slices match label \"%s\" in this case",
+             workflow->name, workflow->slice_label);
+    ReportWorkflowMessage(message);
     return;
   }
 
+  workflow_message[0] = 0;
   HideWorkflowPlane(&active_plane);
   if(apply_clip_view == 0)RestoreWorkflowCameraClip();
   if(active_workflow == workflow_index){

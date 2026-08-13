@@ -39,13 +39,89 @@ The default result mappings are:
 
 | Workflow | Slice label | Colourbar |
 | --- | --- | --- |
-| Visibility | `VIS_C0.9H0.1` | `Visibility` |
+| Visibility | `VIS_C` | `Visibility` |
 | Temperature | `temp` | `Temperature` |
 | Velocity | `vel` | `Velocity` |
 | Pressure | `pres` | `Pressure` |
 
+The visibility default, `VIS_C`, is matched as a family rather than an exact
+string: FDS reports the soot visibility quantity as bare `VIS_C` in most cases,
+but as `VIS_C` followed by a simulation-specific extinction-coefficient/soot-
+yield suffix (for example `VIS_C0.9H0.1`) when the case sets non-default
+visibility constants. The default matches either form. Any other
+`RESULTWORKFLOW` label (temp/vel/pres, or a custom override) still requires an
+exact match, so this only applies to the visibility default.
+
 Mappings can be overridden with `RESULTWORKFLOW` records in the global or
 case-specific INI. A case-specific record takes precedence.
+
+### Adding a new shortcut
+
+All fork shortcuts are dispatched from one place: `HandleResultWorkflowShortcut`
+in `Source/smokeview/result_workflow.c`, called from `Keyboard()` in
+`Source/smokeview/callbacks.c` *before* Smokeview's own upstream keyboard
+switch. Returning `1` consumes the keypress; returning `0` falls through to
+upstream handling. `Ctrl+<letter>` arrives as the raw ASCII control code
+(1-26), which the function folds back to a lowercase letter before the
+`switch`, and `Shift` reverses `direction` for the cycling shortcuts.
+
+**Before picking a letter, check both lists it might collide with:**
+
+- This fork's own bindings (the `switch(lower_key)` in
+  `HandleResultWorkflowShortcut`): currently `x y z i l t v p m u`.
+- Upstream's own `Ctrl+<letter>` bindings in `callbacks.c`'s main keyboard
+  switch: currently `b c C D e g h k m s t w`. Search for
+  `case '<letter>':` there, since some (like `k`) test
+  `keystate == GLUT_ACTIVE_CTRL` inline rather than through a nested
+  `case GLUT_ACTIVE_CTRL:` — a plain grep for `GLUT_ACTIVE_CTRL` will miss
+  those.
+
+Because the fork's handler runs first and returns `1` unconditionally when a
+letter matches, a fork binding **silently shadows** any upstream `Ctrl+<letter>`
+action for that same key, with no warning. This already happens for `m`:
+the fork's `FlipWorkflowClipSide` (`Ctrl+M`) and upstream's mesh-highlight
+cycling (`callbacks.c`, `case 'm':`, `GLUT_ACTIVE_CTRL` branch) claim the same
+key, and the fork's binding always wins. Avoid repeating this by mistake for a
+new shortcut — reusing a letter deliberately (as here) is fine, but it should
+be a conscious choice, not an accident.
+
+Also avoid `d` and `f`: these are Smokeview's own sticky-Ctrl/sticky-Alt keys
+(`callbacks.c:1865`/`1921`), so binding them directly would interact oddly
+with that mechanism. Remember the Ctrl+I/TAB collision described above when
+choosing a letter likely to be intercepted by a window manager or
+remote-desktop client — pick a backup binding up front for anything similarly
+exposed, rather than waiting for a report from a remote session.
+
+**To add a new cycling result-review workflow** (a fifth quantity alongside
+visibility/temperature/velocity/pressure):
+
+1. Add a value to `enum workflow_type` and bump `NRESULT_WORKFLOWS`.
+2. Add a matching entry to each of `workflows[]`, `default_slice_labels[]`,
+   `default_colorbar_labels[]`, `default_fixed_mins[]`, and
+   `default_fixed_maxs[]`.
+3. Add `case '<letter>':` to `HandleResultWorkflowShortcut`'s switch, calling
+   `SelectWorkflowPlane(WORKFLOW_<NAME>, apply_clip_view, direction)`.
+4. If the quantity should ship with fixed company-default bounds, add a
+   `C_SLICE`/`V2_SLICE` record to `Build/for_bundle/smokeview.ini` — see the
+   `VIS_C` entries for the format.
+
+**To add a standalone shortcut** unrelated to the cycling workflows, add a
+`case '<letter>':` directly to `HandleResultWorkflowShortcut`'s switch,
+returning `1` when handled. Only do this for a genuinely new fork-specific
+action — never to override an existing upstream Smokeview shortcut, since (per
+above) that shadowing happens silently.
+
+**After adding any shortcut:**
+
+- Update the shortcut table above and the matching table in
+  `Utilities/Scripts/README.md`, and add it to the acceptance-test checklist
+  below.
+- Rebuild and test manually with a GLUI dialog window focused, not just the
+  main graphics window — this is exactly how the Ctrl+I/TAB collision was
+  missed originally — and with Caps Lock both on and off, since the vendored
+  GLUT folds Caps Lock into the Shift modifier (see the acceptance-test note
+  below), which silently reverses cycling direction or disables a shortcut
+  that explicitly rejects Shift.
 
 ## Repository Management
 
@@ -75,6 +151,22 @@ git push origin ashton-smv-v6.11.2-af1
 ```
 
 Only tag a commit after its release package has passed the acceptance tests.
+
+### Pre-release test builds
+
+While a release line is still being iterated on and has not yet been tagged,
+set `ASHTON_RELEASE` to that release name with an `-rcN` suffix, for example
+`af1-rc1`, `af1-rc2`, and so on for each distributed test build. This keeps
+successive test builds distinguishable (in the `-version` banner, the
+installer filename, and the embedded checksum) without implying a numbered
+release (`af2`) has begun. `ASHTON_RELEASE` is a free-form string, so no other
+build or packaging script needs to change to support this.
+
+Once a build passes acceptance testing, drop the `-rcN` suffix (`af1-rc3`
+becomes `af1`), rebuild and repackage so the final artefact's embedded version
+matches exactly, and only then create the annotated tag. Do not tag an `-rcN`
+build. The next release line after a tagged version increments the numbered
+suffix as before (`af1` to `af2`, not `af1.1`).
 
 ## Configuration Files
 
