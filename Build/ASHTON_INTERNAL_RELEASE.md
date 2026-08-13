@@ -285,6 +285,15 @@ see `Utilities/Scripts/smv_help.sh` for its source and
 
 ### Building on the correct Linux version
 
+`scripts/cut_release.sh <ASHTON_RELEASE>` automates everything in this
+section: it updates `ASHTON_RELEASE` in `CMakeLists.txt`, runs the Docker/
+Ubuntu 22.04 build described below, packages the installer, verifies the
+glibc floor, and reports the result — without committing anything. Omit the
+argument to be prompted for it interactively. Pass `--skip-build` to
+repackage an existing build (only meaningful when `ASHTON_RELEASE` hasn't
+changed, since the version is compiled into the binary). The manual steps
+below explain what it's doing and remain the reference for troubleshooting.
+
 glibc is backward-compatible but not forward-compatible: a binary built on a
 newer Linux distribution requires that distribution's glibc or newer, and fails
 on an older one with an error like:
