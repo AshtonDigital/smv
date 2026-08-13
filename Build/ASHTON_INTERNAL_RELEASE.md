@@ -384,6 +384,19 @@ ashton-smokeview-v6.11.2-af1-linux-x64/
 `-- VERSION
 ```
 
+This versioned directory name is only the embedded tarball layout and the
+installer filename — it identifies which build you're looking at before
+installing it. The Linux installer unpacks this payload into a **fixed,
+unversioned** directory on disk (`/opt/ashton-smokeview`, or
+`$HOME/.local/opt/ashton-smokeview` per-user), the same way most simple
+`/opt`-style Linux applications handle upgrades (compare `/opt/google/chrome`,
+never `/opt/google/chrome-v128`): an upgrade replaces that directory's
+contents in place rather than leaving the previous version's directory behind
+as dead weight. The actual installed version is still recorded inside it
+(`VERSION`, and `af-smv -version`), just not in the directory name. The
+installer also sweeps up any leftover directory from the old
+`ashton-smokeview-v<version>` scheme the first time it runs after this change.
+
 The Windows payload uses `smokeview.exe` and also includes
 `capture_result_slices.cmd`, which provides dependency checking and invokes the
 Python capture utility. `VERSION` contains the release version, Git commit,

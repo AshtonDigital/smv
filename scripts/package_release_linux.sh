@@ -233,8 +233,8 @@ Usage:
 
 Options:
   --target DIR       Installation directory
-                     (default: $HOME/.local/opt/$package_name, or
-                     /opt/$package_name with --system)
+                     (default: $HOME/.local/opt/ashton-smokeview, or
+                     /opt/ashton-smokeview with --system)
   --system           Install for all users: /opt, /usr/local/bin and
                      /usr/share instead of the per-user \$HOME defaults.
                      Requires root. Implies --yes.
@@ -252,6 +252,14 @@ fail() {
 # A permissive umask so a root --system install leaves the package readable
 # and traversable by every user, regardless of the invoking shell's umask.
 umask 022
+
+# The install directory is fixed and unversioned (like /opt/google/chrome,
+# not /opt/google/chrome-v128), so an upgrade overwrites it in place instead
+# of leaving the previous version's directory as permanent dead weight. The
+# actual installed version is still recorded inside it (VERSION, and
+# `-version`'s output), just not in the directory name. package_name (the
+# installer filename and embedded tarball layout) stays fully versioned.
+install_dir_name="ashton-smokeview"
 
 target=""
 extract_file=""
@@ -311,12 +319,12 @@ if ((system_install == 0)) && [[ "$EUID" -eq 0 ]]; then
 fi
 
 if ((system_install == 1)); then
-  default_target="/opt/$package_name"
+  default_target="/opt/$install_dir_name"
   link_dir="/usr/local/bin"
   data_home="/usr/share"
   config_home="/root/.config"
 else
-  default_target="$HOME/.local/opt/$package_name"
+  default_target="$HOME/.local/opt/$install_dir_name"
   link_dir="${XDG_BIN_HOME:-$HOME/.local/bin}"
   data_home="${XDG_DATA_HOME:-$HOME/.local/share}"
   config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -340,27 +348,66 @@ if [[ -e "$target" && ! -d "$target" ]]; then
   fail "installation target exists and is not a directory: $target"
 fi
 
+# A pre-existing target is only ever replaced if it looks like one of our own
+# prior installs (carries the .smokeview_bin marker every payload ships) or
+# is empty; otherwise refuse rather than silently overwrite unrelated data.
+replacing_existing=0
+if [[ -e "$target" ]]; then
+  if [[ -f "$target/.smokeview_bin" ]]; then
+    replacing_existing=1
+  elif [[ -n "$(ls -A "$target" 2>/dev/null)" ]]; then
+    fail "installation target already exists and does not look like a prior Ashton Smokeview install (missing .smokeview_bin): $target"
+  fi
+fi
+
+# The install directory used to embed the version (ashton-smokeview-v<ver>),
+# so upgrading left the previous version's directory behind, orphaned, next
+# to the new one. Sweep up any such sibling now that the directory is fixed.
+# Only ever remove one that carries our own marker file.
+target_parent="$(dirname "$target")"
+for old_dir in "$target_parent"/ashton-smokeview-v*; do
+  [[ -d "$old_dir" ]] || continue
+  [[ -f "$old_dir/.smokeview_bin" ]] || continue
+  echo "Removing superseded install: $old_dir"
+  rm -rf -- "$old_dir"
+done
+
 success=0
 temporary_dir=""
-created_target=0
-[[ -e "$target" ]] || created_target=1
+staging_dir="${target}.installing.$$"
+target_owned=0
 
 cleanup() {
   rm -rf -- "$temporary_dir"
-  if ((success == 0 && created_target == 1)); then
+  rm -rf -- "$staging_dir"
+  if ((success == 0 && target_owned == 1)); then
     rm -rf -- "$target"
   fi
 }
 trap cleanup EXIT INT TERM
 
-mkdir -p "$target"
 temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/ashton-smokeview-install.XXXXXX")"
 tail -n +"$payload_line" "$0" | tar -xz -C "$temporary_dir"
-cp -R "$temporary_dir/$package_name/." "$target/"
-chmod 0755 "$target/smokeview"
-chmod 0755 "$target/capture_result_slices.py"
-chmod 0755 "$target/smv_help.sh"
-chmod -R a+rX "$target"
+
+# Assemble the new install fully in a staging directory next to $target
+# before touching anything, then swap it into place with mv -- a single
+# rename syscall on the same filesystem, as close to atomic as a plain shell
+# script can manage. This keeps the window where neither version is usable
+# down to that one step, rather than the whole copy, so an interrupted
+# upgrade can't as easily leave nothing installed at all.
+rm -rf -- "$staging_dir"
+mkdir -p "$staging_dir"
+cp -R "$temporary_dir/$package_name/." "$staging_dir/"
+chmod 0755 "$staging_dir/smokeview"
+chmod 0755 "$staging_dir/capture_result_slices.py"
+chmod 0755 "$staging_dir/smv_help.sh"
+chmod -R a+rX "$staging_dir"
+
+if ((replacing_existing == 1)); then
+  rm -rf -- "$target"
+fi
+target_owned=1
+mv -- "$staging_dir" "$target"
 
 mkdir -p "$link_dir"
 rm -f "$link_dir/ashton-smokeview" "$link_dir/ashton-capture-slices" "$link_dir/afm-smv"
@@ -371,7 +418,11 @@ ln -sfn "$target/smv_help.sh" "$link_dir/smvhelp"
 generic_launcher="$link_dir/smokeview"
 if [[ ! -e "$generic_launcher" && ! -L "$generic_launcher" ]]; then
   ln -s "$target/smokeview" "$generic_launcher"
-elif [[ -L "$generic_launcher" && "$(readlink "$generic_launcher")" == *"/ashton-smokeview-v"* ]]; then
+elif [[ -L "$generic_launcher" && "$(readlink "$generic_launcher")" == *"/ashton-smokeview"* ]]; then
+  # Matches both the current fixed install directory and the old
+  # ashton-smokeview-v<version> scheme, so upgrading from an install made
+  # before this change still replaces the launcher instead of leaving it
+  # pointed at a directory that was just removed above.
   ln -sfn "$target/smokeview" "$generic_launcher"
 else
   echo "Existing launcher was not replaced: $generic_launcher"
