@@ -13,6 +13,10 @@ upstream Smokeview but adds the result-review shortcuts below, plus the
 af-smv /path/to/case.smv
 ```
 
+For a quick on-screen summary of these shortcuts and the `smv-cap` options,
+run `smvhelp` (installed alongside `af-smv`/`smv-cap`; source at
+`Utilities/Scripts/smv_help.sh`).
+
 ### Result-review shortcuts
 
 Used while `af-smv` is open, in addition to all the normal Smokeview

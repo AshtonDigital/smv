@@ -278,6 +278,11 @@ registers **Capture result slices** as an `.smv` application under **Open
 With**. These actions start a separate automated Smokeview process; an
 existing interactive window can remain open.
 
+The Linux installer also installs `smvhelp`, which prints a summary of the
+added shortcuts and `smv-cap` options for engineers unfamiliar with the fork —
+see `Utilities/Scripts/smv_help.sh` for its source and
+`Utilities/Scripts/README.md` for the same content in documentation form.
+
 ### Building on the correct Linux version
 
 glibc is backward-compatible but not forward-compatible: a binary built on a
@@ -370,6 +375,7 @@ The Linux payload has this layout:
 ashton-smokeview-v6.11.2-af1-linux-x64/
 |-- smokeview
 |-- capture_result_slices.py
+|-- smv_help.sh
 |-- smokeview.ini
 |-- objects.svo
 |-- colorbars/
@@ -451,13 +457,13 @@ Verify all of the following before distributing a release:
   Smokeview window remains open.
 - On Windows, double-clicking an `.smv` file opens Ashton Smokeview and the
   **Capture result slices** File Explorer context action works.
-- On Linux, `af-smv` and `smv-cap` are available, an `.smv` file opens in
-  Ashton Smokeview by default, and **Open With > Capture result slices** works
-  in the desktop file manager.
-- On a shared Linux machine installed with `--system`, `af-smv` and `smv-cap`
-  resolve and run for a **second, non-installing user account**, not just the
-  account that ran the installer, and that second user also gets the `.smv`
-  **Open With > Capture result slices** entry.
+- On Linux, `af-smv`, `smv-cap` and `smvhelp` are available, an `.smv` file
+  opens in Ashton Smokeview by default, and **Open With > Capture result
+  slices** works in the desktop file manager.
+- On a shared Linux machine installed with `--system`, `af-smv`, `smv-cap` and
+  `smvhelp` resolve and run for a **second, non-installing user account**, not
+  just the account that ran the installer, and that second user also gets the
+  `.smv` **Open With > Capture result slices** entry.
 
 ## Publishing Internally
 
@@ -478,9 +484,9 @@ chmod +x ashton-smokeview-v6.11.2-af1-linux-x64.sh
 ./ashton-smokeview-v6.11.2-af1-linux-x64.sh
 ```
 
-That installs under `$HOME/.local/opt`, with the `af-smv`/`smv-cap` commands
-symlinked into `$HOME/.local/bin` and the `.smv` file association set only for
-that user.
+That installs under `$HOME/.local/opt`, with the `af-smv`/`smv-cap`/`smvhelp`
+commands symlinked into `$HOME/.local/bin` and the `.smv` file association set
+only for that user.
 
 ### Installing for every user on a shared machine
 
@@ -493,10 +499,11 @@ chmod +x ashton-smokeview-v6.11.2-af1-linux-x64.sh
 sudo ./ashton-smokeview-v6.11.2-af1-linux-x64.sh --system
 ```
 
-`--system` requires root and installs into `/opt`, symlinks `af-smv`, `smv-cap`
-and a generic `smokeview` into `/usr/local/bin` (on every user's `PATH` by
-default), and registers the `.smv` file association and desktop entries under
-`/usr/share` rather than any one user's home directory. It also sets the
+`--system` requires root and installs into `/opt`, symlinks `af-smv`, `smv-cap`,
+`smvhelp` and a generic `smokeview` into `/usr/local/bin` (on every user's
+`PATH` by default), and registers the `.smv` file association and desktop
+entries under `/usr/share` rather than any one user's home directory. It also
+sets the
 system-wide default `.smv` application directly, since `xdg-mime default` only
 ever writes the invoking (root) user's own configuration and cannot set a
 machine-wide default on its own. **Do not** run the installer as root without

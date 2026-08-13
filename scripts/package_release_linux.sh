@@ -100,6 +100,7 @@ version="${version#v}"
 [[ -f "$repo_root/Build/for_bundle/.smokeview_bin" ]] || fail ".smokeview_bin is missing"
 [[ -f "$repo_root/Build/for_bundle/objects.svo" ]] || fail "objects.svo is missing"
 [[ -f "$repo_root/Utilities/Scripts/capture_result_slices.py" ]] || fail "capture_result_slices.py is missing"
+[[ -f "$repo_root/Utilities/Scripts/smv_help.sh" ]] || fail "smv_help.sh is missing"
 [[ -d "$repo_root/Build/for_bundle/colorbars" ]] || fail "colorbars directory is missing"
 [[ -d "$repo_root/Build/for_bundle/textures" ]] || fail "textures directory is missing"
 
@@ -149,6 +150,7 @@ mkdir -p "$package_dir"
 
 install -m 0755 "$binary" "$package_dir/smokeview"
 install -m 0755 "$repo_root/Utilities/Scripts/capture_result_slices.py" "$package_dir/capture_result_slices.py"
+install -m 0755 "$repo_root/Utilities/Scripts/smv_help.sh" "$package_dir/smv_help.sh"
 install -m 0644 "$config_file" "$package_dir/smokeview.ini"
 install -m 0644 "$repo_root/Build/for_bundle/.smokeview_bin" "$package_dir/.smokeview_bin"
 install -m 0644 "$repo_root/Build/for_bundle/objects.svo" "$package_dir/objects.svo"
@@ -188,6 +190,8 @@ After installation, the equivalent commands are:
 
   af-smv /absolute/path/to/case.smv
   smv-cap /absolute/path/to/case.smv
+
+Run smvhelp for a summary of the added shortcuts and smv-cap options.
 
 Desktop users can right-click an .smv file and choose
 Open With > Capture result slices.
@@ -355,12 +359,14 @@ tail -n +"$payload_line" "$0" | tar -xz -C "$temporary_dir"
 cp -R "$temporary_dir/$package_name/." "$target/"
 chmod 0755 "$target/smokeview"
 chmod 0755 "$target/capture_result_slices.py"
+chmod 0755 "$target/smv_help.sh"
 chmod -R a+rX "$target"
 
 mkdir -p "$link_dir"
 rm -f "$link_dir/ashton-smokeview" "$link_dir/ashton-capture-slices" "$link_dir/afm-smv"
 ln -sfn "$target/smokeview" "$link_dir/af-smv"
 ln -sfn "$target/capture_result_slices.py" "$link_dir/smv-cap"
+ln -sfn "$target/smv_help.sh" "$link_dir/smvhelp"
 
 generic_launcher="$link_dir/smokeview"
 if [[ ! -e "$generic_launcher" && ! -L "$generic_launcher" ]]; then
@@ -447,8 +453,10 @@ echo
 echo "Installed Ashton Smokeview in $target"
 echo "Smokeview launcher: $link_dir/af-smv"
 echo "Capture launcher: $link_dir/smv-cap"
+echo "Help launcher: $link_dir/smvhelp"
 echo "Run now: $link_dir/af-smv"
 echo "To capture: $link_dir/smv-cap /path/to/case.smv"
+echo "For help: $link_dir/smvhelp"
 echo "Desktop integration: right-click an .smv file and choose Open With -> Capture result slices."
 if ((system_install == 1)); then
   echo "Each user selects Ashton Smokeview as their default .smv opener the first"
